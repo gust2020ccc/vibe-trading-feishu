@@ -1,0 +1,63 @@
+# ====================================
+# Vibe-Trading Feishu - .gitignore
+# 严格排除所有敏感信息
+# ====================================
+
+# ---- 敏感配置文件（含密钥/凭据）----
+.env
+agent.json
+config/.env
+config/agent.json
+
+# ---- 用户数据 ----
+pairing.json
+users.json
+*.pairing.json
+
+# ---- Python 虚拟环境 ----
+.venv/
+venv/
+env/
+
+# ---- Python 缓存 ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# ---- IDE / 编辑器 ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ---- 操作系统 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 日志 ----
+*.log
+logs/
+
+# ---- 内部文档（含决策细节，不上传）----
+docs/roadmap.html
+docs/部署方案.html
+部署方案.html
+
+# ---- 临时文件 ----
+*.tmp
+*.bak
+*.cache
+
+# ---- Node.js（前端阶段后启用）----
+node_modules/
+web/dist/
+web/node_modules/
+
+# ---- Docker 数据卷 ----
+docker/data/
