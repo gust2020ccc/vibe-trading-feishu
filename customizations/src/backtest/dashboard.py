@@ -98,6 +98,11 @@ table tr:hover td { background: var(--card-hover); }
 .status-success { background: rgba(76,175,80,0.2); color: var(--success); }
 .status-error { background: rgba(244,67,54,0.2); color: var(--danger); }
 .status-unknown { background: rgba(136,143,160,0.2); color: var(--text-dim); }
+.source-badge { padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; margin-left: 6px; }
+.source-system { background: rgba(79,140,255,0.15); color: var(--primary); }
+.source-custom { background: rgba(255,152,0,0.15); color: var(--warning); }
+.strategy-opt-group { font-weight: 600; color: var(--text-dim); font-size: 12px; padding: 4px 8px; }
+.strategy-option { padding: 4px 8px; }
 .result-area { margin-top: 16px; }
 .result-card {
   background: var(--card); border-radius: var(--radius); padding: 16px;
@@ -224,12 +229,31 @@ async function loadStrategies() {
     const res = await fetch('/backtest/strategies');
     strategies = await res.json();
     const sel = document.getElementById('strategySelect');
-    strategies.forEach(s => {
-      const opt = document.createElement('option');
-      opt.value = s.id;
-      opt.textContent = s.name + ' (' + s.name_en + ')';
-      sel.appendChild(opt);
-    });
+    // Group by source
+    const systemStrats = strategies.filter(s => s.source === 'system');
+    const customStrats = strategies.filter(s => s.source === 'custom');
+    if (systemStrats.length > 0) {
+      const grp = document.createElement('optgroup');
+      grp.label = '🔹 系统策略 (标准)';
+      systemStrats.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = s.name + ' (' + s.name_en + ')';
+        grp.appendChild(opt);
+      });
+      sel.appendChild(grp);
+    }
+    if (customStrats.length > 0) {
+      const grp = document.createElement('optgroup');
+      grp.label = '⭐ 定制策略 (高级)';
+      customStrats.forEach(s => {
+        const opt = document.createElement('option');
+        opt.value = s.id;
+        opt.textContent = s.name + ' (' + s.name_en + ')';
+        grp.appendChild(opt);
+      });
+      sel.appendChild(grp);
+    }
   } catch (e) {
     showToast('加载策略列表失败: ' + e.message, 'error');
   }
@@ -242,14 +266,18 @@ function onStrategyChange() {
   const paramsEl = document.getElementById('paramsContainer');
   paramsEl.innerHTML = '';
   if (!currentStrategy) { descEl.textContent = ''; return; }
-  descEl.textContent = currentStrategy.description;
-  if (currentStrategy.parameters) {
+  const sourceLabel = currentStrategy.source === 'custom' ? '⭐ 定制策略' : '🔹 系统策略';
+  const sourceCls = currentStrategy.source === 'custom' ? 'source-custom' : 'source-system';
+  descEl.innerHTML = '<span class="source-badge ' + sourceCls + '">' + sourceLabel + '</span> ' + currentStrategy.description;
+  if (currentStrategy.parameters && currentStrategy.parameters.length > 0) {
     currentStrategy.parameters.forEach(p => {
       const div = document.createElement('div');
       div.className = 'param-item';
       div.innerHTML = `<label>${p.label}</label><input type="${p.type === 'int' ? 'number' : 'text'}" id="param_${p.key}" value="${p.default}" ${p.min !== undefined ? 'min="' + p.min + '"' : ''} ${p.max !== undefined ? 'max="' + p.max + '"' : ''} step="${p.type === 'float' ? '0.1' : '1'}">`;
       paramsEl.appendChild(div);
     });
+  } else if (currentStrategy.source === 'custom') {
+    paramsEl.innerHTML = '<div style="font-size:12px;color:var(--text-dim);padding:8px;">此定制策略使用文件内置默认参数，暂不支持通过界面调参。</div>';
   }
 }
 

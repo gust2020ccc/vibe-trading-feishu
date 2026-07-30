@@ -409,7 +409,7 @@ def _format_error(
 
 
 def _format_strategy_list() -> str:
-    """List the available strategy templates."""
+    """List the available strategy templates, grouped by source/tier."""
     strategies: list = []
     try:
         from src.backtest.templates import list_strategies
@@ -417,40 +417,41 @@ def _format_strategy_list() -> str:
     except Exception:  # noqa: BLE001
         logger.exception("Failed to list backtest strategies")
 
-    # Fallback: derive the list directly from STRATEGY_TEMPLATES.
-    if not strategies:
-        try:
-            from src.backtest.templates import STRATEGY_TEMPLATES
-            if isinstance(STRATEGY_TEMPLATES, dict):
-                strategies = list(STRATEGY_TEMPLATES.values())
-            elif isinstance(STRATEGY_TEMPLATES, (list, tuple)):
-                strategies = list(STRATEGY_TEMPLATES)
-        except Exception:  # noqa: BLE001
-            logger.debug("STRATEGY_TEMPLATES fallback also unavailable")
-
     if not strategies:
         return "❌ 无法加载策略列表（src.backtest.templates 不可用）。"
 
+    # Split into system (standard) and custom (advanced)
+    system_strats = [s for s in strategies if _attr(s, "source", "system") == "system"]
+    custom_strats = [s for s in strategies if _attr(s, "source", "system") == "custom"]
+
     lines = ["📋 可用回测策略", _SEPARATOR]
-    for idx, strategy in enumerate(strategies, 1):
-        sid = _attr(strategy, "id", "") or _attr(strategy, "strategy_id", "")
-        name = _attr(strategy, "name", "") or _attr(strategy, "title", "") or sid
-        desc = _attr(strategy, "description", "") or _attr(strategy, "desc", "")
-        defaults = _attr(strategy, "default_params", None) or _attr(strategy, "params", None)
 
-        lines.append(f"{idx}. {sid} — {name}" if sid else f"{idx}. {name}")
-        if desc:
-            lines.append(f"   {_truncate(desc, 60)}")
-        if defaults:
-            if isinstance(defaults, dict):
-                dline = ", ".join(f"{k}={v}" for k, v in defaults.items())
-            else:
-                dline = str(defaults)
-            lines.append(f"   默认参数: {dline}")
+    if system_strats:
+        lines.append("")
+        lines.append("🔹 系统策略 (标准)")
+        for idx, strategy in enumerate(system_strats, 1):
+            sid = _attr(strategy, "id", "")
+            name = _attr(strategy, "name", "") or sid
+            desc = _attr(strategy, "description", "")
+            lines.append(f"  {idx}. {sid} — {name}")
+            if desc:
+                lines.append(f"     {_truncate(desc, 56)}")
 
+    if custom_strats:
+        lines.append("")
+        lines.append("⭐ 定制策略 (高级)")
+        for idx, strategy in enumerate(custom_strats, 1):
+            sid = _attr(strategy, "id", "")
+            name = _attr(strategy, "name", "") or sid
+            desc = _attr(strategy, "description", "")
+            lines.append(f"  {idx}. {sid} — {name}")
+            if desc:
+                lines.append(f"     {_truncate(desc, 56)}")
+
+    lines.append("")
     lines.append(_SEPARATOR)
     lines.append("用法: /backtest <策略> <代码> <开始> <结束> [参数=值 ...]")
-    lines.append("示例: /backtest ma_cross 000001.SZ 2024-01-01 2024-12-31")
+    lines.append("示例: /backtest brick_reversal 000001.SZ 2024-01-01 2026-07-30")
     return "\n".join(lines)
 
 
