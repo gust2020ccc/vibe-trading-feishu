@@ -284,6 +284,10 @@ register_auth_routes(app)
 from src.usage.admin_routes import register_admin_routes  # noqa: E402
 register_admin_routes(app)
 
+# --- Backtest (Strategy Templates & Direct Execution) ---
+from src.api.backtest_routes import register_backtest_routes  # noqa: E402
+register_backtest_routes(app, require_auth=require_auth)
+
 
 # ============================================================================
 # Scheduled Research Routes - defined in src/api/scheduled_routes.py

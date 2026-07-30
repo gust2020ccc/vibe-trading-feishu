@@ -199,6 +199,30 @@ class ChannelRuntime:
                 )
                 return
 
+            # --- /backtest command: direct strategy backtesting ---
+            if self._is_backtest_command(msg.content):
+                try:
+                    from src.backtest_commands import handle_backtest_command
+                    reply = handle_backtest_command(
+                        msg.sender_id,
+                        self._backtest_subcommand_text(msg.content),
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        bus=self.bus,
+                    )
+                except Exception as exc:
+                    logger.warning("Backtest command failed: %s", exc)
+                    reply = f"回测命令执行失败: {exc}"
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        content=reply,
+                        metadata={"_channel_runtime": True, "_backtest_command": True},
+                    )
+                )
+                return
+
             # --- Quota check: hard block if limits exceeded ---
             if self._quota_checker is not None:
                 check_result = self._quota_checker(msg.sender_id, msg.channel)
@@ -506,6 +530,18 @@ class ChannelRuntime:
     @staticmethod
     def _admin_subcommand_text(content: str) -> str:
         """Extract the subcommand text after /admin."""
+        parts = content.strip().split(None, 1)
+        return parts[1] if len(parts) > 1 else ""
+
+    @staticmethod
+    def _is_backtest_command(content: str) -> bool:
+        """Check if the message is a /backtest command."""
+        stripped = content.strip().lower()
+        return stripped == "/backtest" or stripped.startswith("/backtest ")
+
+    @staticmethod
+    def _backtest_subcommand_text(content: str) -> str:
+        """Extract the subcommand text after /backtest."""
         parts = content.strip().split(None, 1)
         return parts[1] if len(parts) > 1 else ""
 

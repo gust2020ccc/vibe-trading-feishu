@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # Vibe-Trading 飞书渠道一键启动脚本
 # 用法: 在 PowerShell 中运行 .\start.ps1
 # ============================================================
@@ -11,6 +11,15 @@ $VenvPython = "$ScriptDir\.venv\Scripts\python.exe"
 $VibeTrading = "$ScriptDir\.venv\Scripts\vibe-trading.exe"
 $EnvFile = "$env:USERPROFILE\.vibe-trading\.env"
 $AgentJson = "$env:USERPROFILE\.vibe-trading\agent.json"
+
+# ---- 清除代理设置 (修复 akshare 数据源连接问题) ----
+$env:HTTP_PROXY = ""
+$env:HTTPS_PROXY = ""
+$env:http_proxy = ""
+$env:https_proxy = ""
+$env:NO_PROXY = "*"
+$env:no_proxy = "*"
+Write-Host "[OK] 代理已清除 (NO_PROXY=*)" -ForegroundColor Green
 
 # ---- 设置 SSL 证书环境变量 (修复 curl-cffi HTTPS 问题) ----
 $CertPath = "$ScriptDir\.venv\Lib\site-packages\certifi\cacert.pem"
@@ -84,7 +93,7 @@ $ready = $false
 for ($i = 0; $i -lt 15; $i++) {
     Start-Sleep -Seconds 2
     try {
-        $response = Invoke-RestMethod -Uri "http://127.0.0.1:$port/api/system/ping" -Method GET -TimeoutSec 3 -ErrorAction Stop
+        $response = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -Method GET -TimeoutSec 3 -ErrorAction Stop
         $ready = $true
         Write-Host "      API 服务器已就绪" -ForegroundColor Green
         break
