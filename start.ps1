@@ -12,6 +12,20 @@ $VibeTrading = "$ScriptDir\.venv\Scripts\vibe-trading.exe"
 $EnvFile = "$env:USERPROFILE\.vibe-trading\.env"
 $AgentJson = "$env:USERPROFILE\.vibe-trading\agent.json"
 
+# ---- 设置 SSL 证书环境变量 (修复 curl-cffi HTTPS 问题) ----
+$CertPath = "$ScriptDir\.venv\Lib\site-packages\certifi\cacert.pem"
+if (Test-Path $CertPath) {
+    $env:CURL_CA_BUNDLE = $CertPath
+    $env:REQUESTS_CA_BUNDLE = $CertPath
+    # NOTE: SSL_CERT_FILE intentionally NOT set — it breaks Feishu WebSocket SSL handshake
+    Write-Host "[OK] SSL证书已配置 (CURL_CA_BUNDLE + REQUESTS_CA_BUNDLE)" -ForegroundColor Green
+}
+
+# ---- 搜索引擎配置 (国内环境) ----
+$env:VIBE_TRADING_SEARCH_CN_FIRST = "1"
+$env:VIBE_TRADING_SEARCH_BING_FALLBACK = "1"
+Write-Host "[OK] 搜索引擎配置: CN_FIRST 模式" -ForegroundColor Green
+
 # ---- 检查虚拟环境 ----
 if (-not (Test-Path $VibeTrading)) {
     Write-Host "[X] 未找到 vibe-trading，请先运行 .\setup.ps1" -ForegroundColor Red
