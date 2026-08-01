@@ -6,10 +6,11 @@ string that passes the AST safety validation in ``backtest.runner``.
 Strategy sources:
   - ``system``: built-in templates with code generation via ``str.format()``
   - ``custom``: user-imported ``signal_engine.py`` files, served as-is
+  - ``db``: strategies stored in ``strategies.db`` via the strategy_manager
 
 Strategy tiers:
   - ``standard``: system-generated, parameterized, simple strategies
-  - ``advanced``: custom/complex strategies with domain-specific logic
+  - ``advanced``: custom/db/complex strategies with domain-specific logic
 """
 
 from __future__ import annotations
@@ -517,11 +518,92 @@ def _parse_strategy_metadata(py_file: Path, strategy_id: str) -> dict[str, Any]:
     }
 
 
+# --------------------------------------------------------------------------- #
+# Database strategy scanning
+# --------------------------------------------------------------------------- #
+
+_DB_CACHE: dict[str, dict[str, Any]] | None = None
+_DB_CACHE_TIME: float = 0.0
+_DB_CACHE_TTL: float = 5.0  # seconds — DB can change via API, so short TTL
+
+
+def _scan_db_strategies() -> dict[str, dict[str, Any]]:
+    """Scan the strategy database and return a registry dict.
+
+    Queries ``strategies.db`` for all strategies (any status) and converts
+    them to the same registry format used by ``_scan_custom_strategies()``.
+
+    Uses a short TTL cache (5s) since the DB can be modified at any time
+    via the API.  If the database module is unavailable or the DB hasn't
+    been initialised yet, returns an empty dict (graceful fallback).
+
+    DB strategies take precedence over both ``system`` and ``custom``
+    strategies when keys collide (e.g. a migrated ``brick_reversal``).
+    """
+    global _DB_CACHE, _DB_CACHE_TIME
+
+    import time as _time
+    now = _time.time()
+    if _DB_CACHE is not None and (now - _DB_CACHE_TIME) < _DB_CACHE_TTL:
+        return _DB_CACHE
+
+    registry: dict[str, dict[str, Any]] = {}
+
+    try:
+        from src.strategy_manager import db as _db
+        from src.strategy_manager.service import StrategyService
+
+        _db.ensure_db()
+        strategies = StrategyService.list(limit=10000, include_code=True)
+    except Exception:  # noqa: BLE001
+        # Database not available — return empty (or cached) gracefully
+        if _DB_CACHE is not None:
+            return _DB_CACHE
+        return registry
+
+    for s in strategies:
+        # Use name_en as the strategy_id (same as filename stem for migrated)
+        strategy_id = s.name_en or s.id
+
+        # Extract parameters from meta
+        parameters = s.meta.get("parameters", [])
+        markets = s.meta.get("markets", ["a_share"])
+
+        registry[strategy_id] = {
+            "name": s.name,
+            "name_en": strategy_id,
+            "description": s.description or s.meta.get("description", ""),
+            "category": s.category or "custom",
+            "source": "db",
+            "tier": "advanced",
+            "markets": markets,
+            "parameters": parameters,
+            "code_source": s.source_code,
+            "db_id": s.id,
+            "version": s.version,
+            "status": s.status,
+            "tags": s.tags,
+        }
+
+    _DB_CACHE = registry
+    _DB_CACHE_TIME = now
+    logger.debug("Scanned DB strategies: %d found", len(registry))
+    return registry
+
+
 def _get_all_strategies() -> dict[str, dict[str, Any]]:
-    """Return merged system + custom strategies."""
+    """Return merged system + custom + db strategies.
+
+    Precedence (later sources override earlier ones):
+      1. ``system`` — built-in STRATEGY_TEMPLATES
+      2. ``custom`` — file-based custom_strategies/*.py
+      3. ``db`` — strategies from strategies.db (highest precedence)
+    """
     merged = dict(STRATEGY_TEMPLATES)
     custom = _scan_custom_strategies()
     merged.update(custom)
+    db_strategies = _scan_db_strategies()
+    merged.update(db_strategies)
     return merged
 
 
@@ -553,8 +635,8 @@ def generate_signal_engine(strategy_id: str, params: dict | None = None) -> str:
     if template is None:
         raise KeyError(f"Unknown strategy: {strategy_id}")
 
-    # Custom strategy: return source as-is
-    if template.get("source") == "custom":
+    # Custom or DB strategy: return source as-is
+    if template.get("source") in ("custom", "db"):
         return template.get("code_source", "")
 
     # System strategy: format template with params
