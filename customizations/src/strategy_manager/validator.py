@@ -342,6 +342,10 @@ def _validate_structure(tree: ast.Module) -> list[str]:
             )
             continue
         if isinstance(node, (ast.Import, ast.ImportFrom)):
+            # Check for forbidden modules (subprocess, socket, http, etc.)
+            msg = _check_forbidden_node(node)
+            if msg:
+                errors.append(msg)
             continue
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             errors.extend(_validate_function_def(node))
