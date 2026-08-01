@@ -138,6 +138,32 @@ class Factor:
 
 
 @dataclass
+class FactorVersion:
+    """A historical snapshot of a factor."""
+
+    id: str
+    factor_id: str
+    version: int
+    source_code: str = ""
+    meta: dict[str, Any] = field(default_factory=dict)
+    changelog: str = ""
+    created_at: str = ""
+
+    def to_dict(self, include_code: bool = False) -> dict[str, Any]:
+        d = {
+            "id": self.id,
+            "factor_id": self.factor_id,
+            "version": self.version,
+            "meta": self.meta,
+            "changelog": self.changelog,
+            "created_at": self.created_at,
+        }
+        if include_code:
+            d["source_code"] = self.source_code
+        return d
+
+
+@dataclass
 class FactorPortfolio:
     """A multi-factor combination configuration."""
 

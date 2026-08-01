@@ -304,6 +304,52 @@ def register_factor_routes(app: FastAPI, require_auth: Any = None) -> None:
         return {"deleted": True, "id": fid}
 
     # ================================================================
+    # Factor version management
+    # ================================================================
+    @app.get("/factors/{fid}/versions", dependencies=[Depends(require_auth)])
+    async def list_factor_versions(
+        fid: str,
+        include_code: bool = Query(False),
+    ):
+        """List version history for a factor."""
+        from src.strategy_manager.service import FactorService
+
+        versions = FactorService.list_versions(fid, include_code=include_code)
+        return {
+            "versions": [v.to_dict(include_code=include_code) for v in versions],
+            "count": len(versions),
+        }
+
+    @app.get("/factors/{fid}/versions/{ver}", dependencies=[Depends(require_auth)])
+    async def get_factor_version(
+        fid: str,
+        ver: int,
+        include_code: bool = Query(True),
+    ):
+        """Get a specific factor version snapshot."""
+        from src.strategy_manager.service import FactorService
+
+        version = FactorService.get_version(fid, ver)
+        if version is None:
+            raise HTTPException(status_code=404, detail="Version not found")
+        return {"version": version.to_dict(include_code=include_code)}
+
+    @app.post("/factors/{fid}/rollback/{ver}", dependencies=[Depends(require_auth)])
+    async def rollback_factor(fid: str, ver: int):
+        """Rollback a factor to a previous version (creates new version)."""
+        from src.strategy_manager.service import FactorService
+
+        factor, result = FactorService.rollback(fid, ver)
+        if factor is None:
+            raise HTTPException(status_code=404, detail=result.error_message or "Not found")
+        if not result.valid:
+            raise HTTPException(status_code=422, detail={"errors": result.errors})
+        return {
+            "factor": factor.to_dict(include_code=True),
+            "rolled_back_to": ver,
+        }
+
+    # ================================================================
     # Factor marketplace
     # ================================================================
     @app.post("/factors/{fid}/publish", dependencies=[Depends(require_auth)])

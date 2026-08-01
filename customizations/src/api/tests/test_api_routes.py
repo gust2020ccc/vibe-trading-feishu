@@ -452,6 +452,36 @@ class TestFactorAPIRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["factor"]["status"], "published")
 
+    def test_factor_version_management(self):
+        """Factor version list + rollback via API."""
+        create = self.client.post("/factors", json={"name": "Ver Factor", "source_code": _VALID_FACTOR})
+        fid = create.json()["factor"]["id"]
+
+        # Update to create v2
+        updated = _VALID_FACTOR.replace("window: int = 10", "window: int = 20")
+        self.client.put(f"/factors/{fid}", json={"source_code": updated})
+
+        # List versions
+        resp = self.client.get(f"/factors/{fid}/versions")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["count"], 2)
+        self.assertEqual(resp.json()["versions"][0]["version"], 2)
+
+        # Rollback to v1
+        resp2 = self.client.post(f"/factors/{fid}/rollback/1")
+        self.assertEqual(resp2.status_code, 200)
+        self.assertEqual(resp2.json()["factor"]["version"], 3)
+        self.assertEqual(resp2.json()["rolled_back_to"], 1)
+
+    def test_factor_get_version(self):
+        """GET /factors/{id}/versions/{ver} should return specific version."""
+        create = self.client.post("/factors", json={"name": "GV Factor", "source_code": _VALID_FACTOR})
+        fid = create.json()["factor"]["id"]
+
+        resp = self.client.get(f"/factors/{fid}/versions/1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["version"]["version"], 1)
+
 
 class TestWorkbenchRoute(unittest.TestCase):
     """Test the /workbench HTML route."""

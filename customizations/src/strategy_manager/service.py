@@ -757,6 +757,82 @@ class FactorService:
             logger.info("Deleted factor %s", factor_id)
         return deleted
 
+    # ------------------------------------------------------------------ #
+    # Version management (parallel to StrategyService)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def list_versions(factor_id: str, include_code: bool = False) -> list:
+        """List version history for a factor (newest first)."""
+        db.ensure_db()
+        conn = db.get_connection()
+        try:
+            rows = conn.execute(
+                """SELECT * FROM factor_versions
+                   WHERE factor_id = ?
+                   ORDER BY version DESC""",
+                (factor_id,),
+            ).fetchall()
+        finally:
+            conn.close()
+
+        from src.strategy_manager.models import FactorVersion
+        versions = []
+        for r in rows:
+            v = FactorVersion(
+                id=r["id"],
+                factor_id=r["factor_id"],
+                version=r["version"],
+                source_code=r["source_code"],
+                meta=json.loads(r["meta_json"]) if r["meta_json"] else {},
+                changelog=r["changelog"] or "",
+                created_at=r["created_at"],
+            )
+            if not include_code:
+                v.source_code = ""
+            versions.append(v)
+        return versions
+
+    @staticmethod
+    def get_version(factor_id: str, version: int):
+        """Return a specific factor version snapshot, or None."""
+        db.ensure_db()
+        conn = db.get_connection()
+        try:
+            row = conn.execute(
+                """SELECT * FROM factor_versions
+                   WHERE factor_id = ? AND version = ?""",
+                (factor_id, version),
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return None
+        from src.strategy_manager.models import FactorVersion
+        return FactorVersion(
+            id=row["id"],
+            factor_id=row["factor_id"],
+            version=row["version"],
+            source_code=row["source_code"],
+            meta=json.loads(row["meta_json"]) if row["meta_json"] else {},
+            changelog=row["changelog"] or "",
+            created_at=row["created_at"],
+        )
+
+    @staticmethod
+    def rollback(factor_id: str, version: int) -> tuple:
+        """Restore a factor to a previous version (creates new version)."""
+        db.ensure_db()
+        snapshot = FactorService.get_version(factor_id, version)
+        if snapshot is None:
+            return None, ValidationResult(valid=False, errors=["Version not found"])
+
+        return FactorService.update(
+            factor_id,
+            source_code=snapshot.source_code,
+            meta=snapshot.meta,
+            changelog=f"Rollback to version {version}",
+        )
+
 
 # --------------------------------------------------------------------------- #
 # Factor Portfolio Service
