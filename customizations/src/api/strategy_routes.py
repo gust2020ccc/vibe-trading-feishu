@@ -78,6 +78,12 @@ class SubscribeRequest(BaseModel):
     user_id: str = "anonymous"
 
 
+class NLGenerateRequest(BaseModel):
+    description: str
+    auto_create: bool = False
+    name: str | None = None
+
+
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
@@ -409,3 +415,47 @@ def register_strategy_routes(app: FastAPI, require_auth: Any = None) -> None:
                 for e in report.entries
             ],
         }
+
+    # ================================================================
+    # NL Generation
+    # ================================================================
+    @app.post("/strategies/nl-generate", dependencies=[Depends(require_auth)])
+    async def nl_generate_strategy(
+        request: Request,
+        body: NLGenerateRequest,
+    ):
+        """Generate strategy code from a natural language description.
+
+        If ``auto_create`` is true, the generated strategy is saved to the
+        database with the given ``name`` (or a default name).
+        """
+        from src.strategy_manager.nl_generator import generate_strategy_from_nl
+
+        code, error = generate_strategy_from_nl(body.description)
+        if error:
+            raise HTTPException(status_code=422, detail={"message": error})
+
+        result_data: dict[str, Any] = {
+            "source_code": code,
+            "description": body.description,
+        }
+
+        if body.auto_create:
+            from src.strategy_manager.service import StrategyService
+
+            uid = _get_user_id(request)
+            name = body.name or "NL Generated Strategy"
+            strategy, val_result = StrategyService.create(
+                user_id=uid,
+                name=name,
+                source_code=code,
+                description=body.description,
+                category="nl_generated",
+            )
+            if strategy:
+                result_data["strategy"] = strategy.to_dict(include_code=False)
+                result_data["strategy_id"] = strategy.id
+            else:
+                result_data["create_error"] = val_result.errors
+
+        return result_data

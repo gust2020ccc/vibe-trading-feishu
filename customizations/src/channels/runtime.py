@@ -223,6 +223,54 @@ class ChannelRuntime:
                 )
                 return
 
+            # --- /strategy command: strategy management ---
+            if self._is_strategy_command(msg.content):
+                try:
+                    from src.strategy_commands import handle_strategy_command
+                    reply = handle_strategy_command(
+                        msg.sender_id,
+                        self._strategy_subcommand_text(msg.content),
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        bus=self.bus,
+                    )
+                except Exception as exc:
+                    logger.warning("Strategy command failed: %s", exc)
+                    reply = f"策略命令执行失败: {exc}"
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        content=reply,
+                        metadata={"_channel_runtime": True, "_strategy_command": True},
+                    )
+                )
+                return
+
+            # --- /factor command: factor management ---
+            if self._is_factor_command(msg.content):
+                try:
+                    from src.strategy_commands import handle_factor_command
+                    reply = handle_factor_command(
+                        msg.sender_id,
+                        self._factor_subcommand_text(msg.content),
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        bus=self.bus,
+                    )
+                except Exception as exc:
+                    logger.warning("Factor command failed: %s", exc)
+                    reply = f"因子命令执行失败: {exc}"
+                await self.bus.publish_outbound(
+                    OutboundMessage(
+                        channel=msg.channel,
+                        chat_id=msg.chat_id,
+                        content=reply,
+                        metadata={"_channel_runtime": True, "_factor_command": True},
+                    )
+                )
+                return
+
             # --- Quota check: hard block if limits exceeded ---
             if self._quota_checker is not None:
                 check_result = self._quota_checker(msg.sender_id, msg.channel)
@@ -542,6 +590,30 @@ class ChannelRuntime:
     @staticmethod
     def _backtest_subcommand_text(content: str) -> str:
         """Extract the subcommand text after /backtest."""
+        parts = content.strip().split(None, 1)
+        return parts[1] if len(parts) > 1 else ""
+
+    @staticmethod
+    def _is_strategy_command(content: str) -> bool:
+        """Check if the message is a /strategy command."""
+        stripped = content.strip().lower()
+        return stripped == "/strategy" or stripped.startswith("/strategy ")
+
+    @staticmethod
+    def _strategy_subcommand_text(content: str) -> str:
+        """Extract the subcommand text after /strategy."""
+        parts = content.strip().split(None, 1)
+        return parts[1] if len(parts) > 1 else ""
+
+    @staticmethod
+    def _is_factor_command(content: str) -> bool:
+        """Check if the message is a /factor command."""
+        stripped = content.strip().lower()
+        return stripped == "/factor" or stripped.startswith("/factor ")
+
+    @staticmethod
+    def _factor_subcommand_text(content: str) -> str:
+        """Extract the subcommand text after /factor."""
         parts = content.strip().split(None, 1)
         return parts[1] if len(parts) > 1 else ""
 
