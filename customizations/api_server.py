@@ -288,6 +288,17 @@ register_admin_routes(app)
 from src.api.backtest_routes import register_backtest_routes  # noqa: E402
 register_backtest_routes(app, require_auth=require_auth)
 
+# --- Strategy & Factor Management (CRUD + Marketplace) ---
+from src.api.strategy_routes import register_strategy_routes  # noqa: E402
+register_strategy_routes(app, require_auth=require_auth)
+
+from src.api.factor_routes import register_factor_routes  # noqa: E402
+register_factor_routes(app, require_auth=require_auth)
+
+# --- Strategy Workbench (Web UI) ---
+from src.api.workbench_routes import register_workbench_routes  # noqa: E402
+register_workbench_routes(app, require_auth=require_auth)
+
 
 # ============================================================================
 # Scheduled Research Routes - defined in src/api/scheduled_routes.py
