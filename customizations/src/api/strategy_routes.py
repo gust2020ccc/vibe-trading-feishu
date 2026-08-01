@@ -82,9 +82,9 @@ class SubscribeRequest(BaseModel):
 # Helpers
 # --------------------------------------------------------------------------- #
 def _get_user_id(request: Request) -> str:
-    """Extract user_id from request state or query, fallback to 'anonymous'."""
-    # In Sprint 4, this will use proper auth-based user isolation
-    return getattr(request.state, "user_id", None) or "anonymous"
+    """Extract user_id from request using user_context module."""
+    from src.api.user_context import get_user_id_from_request
+    return get_user_id_from_request(request)
 
 
 # --------------------------------------------------------------------------- #

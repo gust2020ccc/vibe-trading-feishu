@@ -299,6 +299,10 @@ register_factor_routes(app, require_auth=require_auth)
 from src.api.workbench_routes import register_workbench_routes  # noqa: E402
 register_workbench_routes(app, require_auth=require_auth)
 
+# --- Marketplace Browsing ---
+from src.api.marketplace_routes import register_marketplace_routes  # noqa: E402
+register_marketplace_routes(app, require_auth=require_auth)
+
 
 # ============================================================================
 # Scheduled Research Routes - defined in src/api/scheduled_routes.py

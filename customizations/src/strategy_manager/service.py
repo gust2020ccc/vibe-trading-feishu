@@ -1167,6 +1167,50 @@ class MarketService:
         finally:
             conn.close()
 
+    @staticmethod
+    def subscribe_factor(factor_id: str, user_id: str) -> bool:
+        """Subscribe a user to a published factor's updates."""
+        db.ensure_db()
+        now = _now()
+        conn = db.get_connection()
+        try:
+            conn.execute(
+                """INSERT OR IGNORE INTO factor_subscriptions (user_id, factor_id, subscribed_at)
+                   VALUES (?, ?, ?)""",
+                (user_id, factor_id, now),
+            )
+            conn.execute(
+                "UPDATE factors SET subscriber_count = subscriber_count + 1 WHERE id = ?",
+                (factor_id,),
+            )
+            conn.commit()
+            return True
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to subscribe user %s to factor %s", user_id, factor_id)
+            return False
+        finally:
+            conn.close()
+
+    @staticmethod
+    def unsubscribe_factor(factor_id: str, user_id: str) -> bool:
+        """Unsubscribe a user from a factor."""
+        db.ensure_db()
+        conn = db.get_connection()
+        try:
+            cursor = conn.execute(
+                "DELETE FROM factor_subscriptions WHERE user_id = ? AND factor_id = ?",
+                (user_id, factor_id),
+            )
+            if cursor.rowcount > 0:
+                conn.execute(
+                    "UPDATE factors SET subscriber_count = MAX(0, subscriber_count - 1) WHERE id = ?",
+                    (factor_id,),
+                )
+            conn.commit()
+            return cursor.rowcount > 0
+        finally:
+            conn.close()
+
     # ------------------------------------------------------------------ #
     # Ratings
     # ------------------------------------------------------------------ #

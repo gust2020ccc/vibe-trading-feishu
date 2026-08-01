@@ -505,5 +505,217 @@ class TestWorkbenchRoute(unittest.TestCase):
         self.assertIn("SignalEngine", resp.text)
 
 
+class TestFactorSubscriptionAPI(unittest.TestCase):
+    """Tests for factor subscribe/unsubscribe API (Sprint 4.3)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmpdir = tempfile.TemporaryDirectory()
+        cls._db_path = Path(cls._tmpdir.name) / "test_factor_sub.db"
+        cls._patcher = patch(
+            "src.strategy_manager.db.get_db_path",
+            return_value=cls._db_path,
+        )
+        cls._patcher.start()
+        from src.strategy_manager import db
+        db._initialized = False
+        db.init_db()
+
+        from fastapi import FastAPI
+        from src.api.factor_routes import register_factor_routes
+        cls.app = FastAPI()
+        register_factor_routes(cls.app)
+
+        from fastapi.testclient import TestClient
+        cls.client = TestClient(cls.app)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._patcher.stop()
+        cls._tmpdir.cleanup()
+
+    def setUp(self):
+        from src.strategy_manager import db
+        conn = db.get_connection()
+        try:
+            for t in ["factor_versions", "factors",
+                       "factor_subscriptions", "factor_ratings", "factor_portfolios"]:
+                conn.execute(f"DELETE FROM {t}")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def test_subscribe_factor(self):
+        """POST /factors/{id}/subscribe should subscribe a user."""
+        create = self.client.post("/factors", json={"name": "SubFac", "source_code": _VALID_FACTOR})
+        fid = create.json()["factor"]["id"]
+
+        resp = self.client.post(f"/factors/{fid}/subscribe", json={"user_id": "sub_user"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["subscribed"])
+
+    def test_unsubscribe_factor(self):
+        """DELETE /factors/{id}/subscribe should unsubscribe."""
+        create = self.client.post("/factors", json={"name": "UnsubFac", "source_code": _VALID_FACTOR})
+        fid = create.json()["factor"]["id"]
+
+        # Subscribe first
+        self.client.post(f"/factors/{fid}/subscribe", json={"user_id": "sub_user"})
+
+        # Unsubscribe
+        resp = self.client.delete(f"/factors/{fid}/subscribe?user_id=sub_user")
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["unsubscribed"])
+
+    def test_unsubscribe_not_found(self):
+        """Unsubscribing without prior subscription should return 404."""
+        create = self.client.post("/factors", json={"name": "NoSub", "source_code": _VALID_FACTOR})
+        fid = create.json()["factor"]["id"]
+
+        resp = self.client.delete(f"/factors/{fid}/subscribe?user_id=ghost")
+        self.assertEqual(resp.status_code, 404)
+
+
+class TestMarketplaceAPI(unittest.TestCase):
+    """Tests for marketplace browsing API (Sprint 4.2)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmpdir = tempfile.TemporaryDirectory()
+        cls._db_path = Path(cls._tmpdir.name) / "test_marketplace.db"
+        cls._patcher = patch(
+            "src.strategy_manager.db.get_db_path",
+            return_value=cls._db_path,
+        )
+        cls._patcher.start()
+        from src.strategy_manager import db
+        db._initialized = False
+        db.init_db()
+
+        from fastapi import FastAPI
+        from src.api.strategy_routes import register_strategy_routes
+        from src.api.factor_routes import register_factor_routes
+        from src.api.marketplace_routes import register_marketplace_routes
+        cls.app = FastAPI()
+        register_strategy_routes(cls.app)
+        register_factor_routes(cls.app)
+        register_marketplace_routes(cls.app)
+
+        from fastapi.testclient import TestClient
+        cls.client = TestClient(cls.app)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._patcher.stop()
+        cls._tmpdir.cleanup()
+
+    def setUp(self):
+        from src.strategy_manager import db
+        conn = db.get_connection()
+        try:
+            for t in ["strategy_versions", "strategies", "strategy_subscriptions",
+                       "strategy_ratings", "factor_versions", "factors",
+                       "factor_subscriptions", "factor_ratings", "factor_portfolios"]:
+                conn.execute(f"DELETE FROM {t}")
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _create_and_publish_strategy(self, name="MarketStrat"):
+        """Helper: create + publish a strategy."""
+        create = self.client.post("/strategies", json={"name": name, "source_code": _VALID_SOURCE})
+        sid = create.json()["strategy"]["id"]
+        self.client.post(f"/strategies/{sid}/publish")
+        return sid
+
+    def _create_and_publish_factor(self, name="MarketFactor"):
+        """Helper: create + publish a factor."""
+        create = self.client.post("/factors", json={"name": name, "source_code": _VALID_FACTOR})
+        fid = create.json()["factor"]["id"]
+        self.client.post(f"/factors/{fid}/publish")
+        return fid
+
+    def test_browse_strategies_empty(self):
+        """GET /marketplace/strategies with no published should return empty."""
+        resp = self.client.get("/marketplace/strategies")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["count"], 0)
+
+    def test_browse_published_strategies(self):
+        """GET /marketplace/strategies should return published ones."""
+        self._create_and_publish_strategy("Published One")
+        # Create but don't publish
+        self.client.post("/strategies", json={"name": "Draft", "source_code": _VALID_SOURCE})
+
+        resp = self.client.get("/marketplace/strategies")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["count"], 1)
+        self.assertEqual(data["strategies"][0]["name"], "Published One")
+
+    def test_browse_strategies_sort_by_name(self):
+        """GET /marketplace/strategies?sort=name should sort alphabetically."""
+        self._create_and_publish_strategy("Zebra")
+        self._create_and_publish_strategy("Alpha")
+
+        resp = self.client.get("/marketplace/strategies?sort=name")
+        self.assertEqual(resp.status_code, 200)
+        names = [s["name"] for s in resp.json()["strategies"]]
+        self.assertEqual(names, ["Alpha", "Zebra"])
+
+    def test_browse_strategies_search(self):
+        """GET /marketplace/strategies?search= should filter."""
+        self._create_and_publish_strategy("Momentum Hunter")
+        self._create_and_publish_strategy("Mean Reversion")
+
+        resp = self.client.get("/marketplace/strategies?search=Momentum")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["count"], 1)
+
+    def test_browse_factors(self):
+        """GET /marketplace/factors should return published factors."""
+        self._create_and_publish_factor("Pub Factor")
+        resp = self.client.get("/marketplace/factors")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["count"], 1)
+
+    def test_featured_strategies(self):
+        """GET /marketplace/strategies/featured should return lists."""
+        sid = self._create_and_publish_strategy("Featured")
+        # Rate it
+        self.client.post(f"/strategies/{sid}/rate", json={"rating": 5})
+
+        resp = self.client.get("/marketplace/strategies/featured")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("top_rated", data)
+        self.assertIn("top_subscribed", data)
+        self.assertIn("top_cloned", data)
+        self.assertGreaterEqual(len(data["top_rated"]), 1)
+
+    def test_featured_factors(self):
+        """GET /marketplace/factors/featured should return lists."""
+        self._create_and_publish_factor("Featured Factor")
+
+        resp = self.client.get("/marketplace/factors/featured")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("top_rated", data)
+        self.assertIn("top_subscribed", data)
+
+    def test_marketplace_stats(self):
+        """GET /marketplace/stats should return overview stats."""
+        self._create_and_publish_strategy("Stat S")
+        self._create_and_publish_factor("Stat F")
+
+        resp = self.client.get("/marketplace/stats")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertIn("strategies", data)
+        self.assertIn("factors", data)
+        self.assertGreaterEqual(data["strategies"]["published_count"], 1)
+        self.assertGreaterEqual(data["factors"]["published_count"], 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

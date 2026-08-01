@@ -15,6 +15,8 @@ Factor marketplace:
   POST   /factors/{fid}/publish      — publish to marketplace
   POST   /factors/{fid}/clone        — clone into own workspace
   POST   /factors/{fid}/rate         — rate (1-5 stars)
+  POST   /factors/{fid}/subscribe    — subscribe to updates
+  DELETE /factors/{fid}/subscribe    — unsubscribe
 
 Factor portfolios:
   GET    /factors/portfolios         — list portfolios
@@ -88,8 +90,9 @@ class UpdatePortfolioRequest(BaseModel):
 # Helpers
 # --------------------------------------------------------------------------- #
 def _get_user_id(request: Request) -> str:
-    """Extract user_id from request state, fallback to 'anonymous'."""
-    return getattr(request.state, "user_id", None) or "anonymous"
+    """Extract user_id from request using user_context module."""
+    from src.api.user_context import get_user_id_from_request
+    return get_user_id_from_request(request)
 
 
 # --------------------------------------------------------------------------- #
@@ -400,3 +403,33 @@ def register_factor_routes(app: FastAPI, require_auth: Any = None) -> None:
             "rating_avg": factor.rating_avg if factor else 0,
             "rating_count": factor.rating_count if factor else 0,
         }
+
+    @app.post("/factors/{fid}/subscribe", dependencies=[Depends(require_auth)])
+    async def subscribe_factor(
+        request: Request,
+        fid: str,
+        body: CloneFactorRequest | None = None,
+    ):
+        """Subscribe to a factor's updates."""
+        from src.strategy_manager.service import MarketService
+
+        uid = (body.user_id if body else None) or _get_user_id(request)
+        success = MarketService.subscribe_factor(fid, uid)
+        if not success:
+            raise HTTPException(status_code=422, detail="Subscribe failed")
+        return {"subscribed": True, "factor_id": fid, "user_id": uid}
+
+    @app.delete("/factors/{fid}/subscribe", dependencies=[Depends(require_auth)])
+    async def unsubscribe_factor(
+        request: Request,
+        fid: str,
+        user_id: str | None = Query(None),
+    ):
+        """Unsubscribe from a factor."""
+        from src.strategy_manager.service import MarketService
+
+        uid = user_id or _get_user_id(request)
+        success = MarketService.unsubscribe_factor(fid, uid)
+        if not success:
+            raise HTTPException(status_code=404, detail="Subscription not found")
+        return {"unsubscribed": True, "factor_id": fid, "user_id": uid}
