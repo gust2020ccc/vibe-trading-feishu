@@ -1,0 +1,68 @@
+# ====================================
+# .dockerignore - 排除不需要的文件
+# ====================================
+
+# Python 虚拟环境
+.venv/
+venv/
+env/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Node.js
+node_modules/
+frontend/node_modules/
+
+# 前端构建产物（Docker 中重新构建）
+frontend/dist/
+
+# 敏感配置
+.env
+agent.json
+*.pairing.json
+users.json
+pairing.json
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志
+*.log
+logs/
+
+# 运行数据
+runs/
+
+# 文档和临时文件
+*.md
+*.html
+*.zip
+docs/
+.trae-html-share-packages/
+
+# Windows 脚本（Docker 用 Linux）
+*.ps1
+
+# 测试
+test_bridge.py
+RESEARCH_PROMPT.md
+
+# Docker 自身
+Dockerfile
+docker-compose.yml
+.dockerignore

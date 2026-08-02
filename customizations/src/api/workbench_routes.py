@@ -1,12 +1,13 @@
 """Web Workbench for Strategy & Factor Management.
 
 Serves a single-page HTML app at /workbench that provides:
-- Strategy list with search, filter, and pagination
-- Create / edit strategy with live code editor and AST validation preview
-- Version history with diff and rollback
+- Strategy list with search, filter
+- Create / edit strategy with code editor and AST validation
+- Version history with rollback
 - Marketplace browser (published strategies, clone, rate, subscribe)
-- Factor management (parallel to strategies)
+- Factor management
 - Factor portfolio configuration
+- NL natural-language strategy generation
 
 The HTML is self-contained (no external CDN dependencies) to work in
 air-gapped environments.
@@ -39,9 +40,9 @@ def register_workbench_routes(app: FastAPI, require_auth=None) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# SPA HTML (self-contained, no external dependencies)
+# SPA HTML — self-contained, no external dependencies
 # --------------------------------------------------------------------------- #
-_WORKBENCH_HTML = r"""<!DOCTYPE html>
+_WORKBENCH_HTML = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -49,503 +50,511 @@ _WORKBENCH_HTML = r"""<!DOCTYPE html>
 <title>策略管理工作台 — Vibe Trading</title>
 <style>
 :root {
-  --bg: #0f1117; --surface: #1a1d27; --surface2: #222632;
-  --border: #2d3142; --text: #e1e4ed; --text2: #8b90a0;
-  --accent: #5b8def; --accent2: #4c6ef5; --green: #37b24d;
-  --red: #e03131; --orange: #f59f00; --radius: 8px;
+  --bg: #0b0e14; --surface: #141821; --surface2: #1c2130; --surface3: #252b3d;
+  --border: #2a3045; --text: #e2e8f0; --text2: #8892b0; --text3: #5a6580;
+  --accent: #6366f1; --accent2: #818cf8; --accent-dim: rgba(99,102,241,.15);
+  --green: #22c55e; --green-dim: rgba(34,197,94,.12);
+  --red: #ef4444; --red-dim: rgba(239,68,68,.12);
+  --orange: #f59e0b; --orange-dim: rgba(245,158,11,.12);
+  --radius: 10px; --radius-sm: 6px;
+  --shadow: 0 4px 24px rgba(0,0,0,.3);
 }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { font-family: 'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); }
-a { color:var(--accent); text-decoration:none; }
+body { font-family: -apple-system,'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--text); overflow:hidden; }
+::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
 
 /* Layout */
 .app { display:flex; height:100vh; }
-.sidebar { width:240px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; }
+.sidebar { width:220px; background:var(--surface); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
 .main { flex:1; display:flex; flex-direction:column; overflow:hidden; }
 
 /* Sidebar */
-.logo { padding:20px; font-size:18px; font-weight:700; border-bottom:1px solid var(--border); }
-.nav { padding:8px; flex:1; }
-.nav-item { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:var(--radius); cursor:pointer; color:var(--text2); transition:all .15s; margin-bottom:2px; }
+.logo { padding:18px 20px; font-size:16px; font-weight:700; border-bottom:1px solid var(--border); color:var(--accent2); letter-spacing:.5px; }
+.nav { padding:8px; flex:1; overflow-y:auto; }
+.nav-section { font-size:10px; text-transform:uppercase; color:var(--text3); padding:12px 10px 4px; letter-spacing:1px; }
+.nav-item { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--radius-sm); cursor:pointer; color:var(--text2); transition:all .15s; margin-bottom:1px; font-size:13px; text-decoration:none; }
 .nav-item:hover { background:var(--surface2); color:var(--text); }
-.nav-item.active { background:var(--accent2); color:#fff; }
-.nav-icon { width:20px; text-align:center; }
-.nav-badge { margin-left:auto; background:var(--border); padding:1px 8px; border-radius:10px; font-size:11px; }
+.nav-item.active { background:var(--accent-dim); color:var(--accent2); font-weight:500; }
+.nav-icon { width:18px; text-align:center; font-size:14px; }
+.sidebar-footer { padding:10px 16px; border-top:1px solid var(--border); font-size:10px; color:var(--text3); }
 
 /* Top bar */
-.topbar { padding:12px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:16px; }
-.topbar h1 { font-size:16px; font-weight:600; }
-.search-box { flex:1; max-width:400px; padding:8px 14px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); }
+.topbar { padding:10px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; background:var(--surface); }
+.topbar h1 { font-size:15px; font-weight:600; white-space:nowrap; }
+.search-box { flex:1; max-width:360px; padding:7px 14px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; }
 .search-box:focus { outline:none; border-color:var(--accent); }
-.btn { padding:8px 16px; border:none; border-radius:var(--radius); cursor:pointer; font-size:13px; transition:all .15s; }
-.btn-primary { background:var(--accent2); color:#fff; }
-.btn-primary:hover { background:var(--accent); }
+.btn { padding:7px 14px; border:none; border-radius:var(--radius-sm); cursor:pointer; font-size:12px; transition:all .15s; white-space:nowrap; }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-primary:hover { background:var(--accent2); }
 .btn-ghost { background:transparent; color:var(--text2); border:1px solid var(--border); }
 .btn-ghost:hover { background:var(--surface2); color:var(--text); }
-.btn-sm { padding:4px 10px; font-size:12px; }
+.btn-green { background:var(--green); color:#fff; }
+.btn-red { background:var(--red); color:#fff; }
+.btn-sm { padding:4px 10px; font-size:11px; }
 
-/* Content area */
-.content { flex:1; overflow-y:auto; padding:20px; }
-.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:16px; }
-.card-header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
-.card-body { padding:18px; }
+/* Content */
+.content { flex:1; overflow-y:auto; padding:16px 20px; }
+.card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:14px; }
+.card-header { padding:12px 16px; border-bottom:1px solid var(--border); font-size:13px; font-weight:600; color:var(--text2); }
+.card-body { padding:16px; }
 
 /* Table */
 table { width:100%; border-collapse:collapse; }
-th { text-align:left; padding:10px 14px; font-size:12px; color:var(--text2); border-bottom:1px solid var(--border); text-transform:uppercase; }
-td { padding:12px 14px; border-bottom:1px solid var(--border); font-size:13px; }
+th { text-align:left; padding:9px 14px; font-size:11px; color:var(--text3); border-bottom:1px solid var(--border); text-transform:uppercase; letter-spacing:.5px; }
+td { padding:10px 14px; border-bottom:1px solid var(--surface2); font-size:13px; }
 tr:hover { background:var(--surface2); }
-.tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:11px; background:var(--surface2); color:var(--text2); margin-right:4px; }
-.status-draft { color:var(--text2); }
-.status-published { color:var(--green); }
-.status-archived { color:var(--red); }
-.status-testing { color:var(--orange); }
+.tag { display:inline-block; padding:2px 8px; border-radius:4px; font-size:10px; background:var(--surface3); color:var(--text2); margin-right:3px; }
+.status-draft { color:var(--text2); } .status-published { color:var(--green); }
+.status-archived { color:var(--red); } .status-testing { color:var(--orange); }
+.badge { display:inline-block; padding:2px 8px; border-radius:10px; font-size:10px; font-weight:500; }
+.badge-green { background:var(--green-dim); color:var(--green); }
+.badge-blue { background:var(--accent-dim); color:var(--accent2); }
+.badge-orange { background:var(--orange-dim); color:var(--orange); }
+.badge-gray { background:var(--surface3); color:var(--text2); }
 
 /* Modal */
-.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.6); display:flex; align-items:center; justify-content:center; z-index:1000; }
-.modal { background:var(--surface); border:1px solid var(--border); border-radius:12px; width:90%; max-width:800px; max-height:85vh; display:flex; flex-direction:column; }
-.modal-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; }
-.modal-title { font-size:16px; font-weight:600; flex:1; }
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.65); display:flex; align-items:center; justify-content:center; z-index:1000; backdrop-filter:blur(2px); }
+.modal { background:var(--surface); border:1px solid var(--border); border-radius:14px; width:92%; max-width:820px; max-height:88vh; display:flex; flex-direction:column; box-shadow:var(--shadow); }
+.modal-header { padding:14px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; }
+.modal-title { font-size:15px; font-weight:600; flex:1; }
 .modal-body { flex:1; overflow-y:auto; padding:20px; }
-.modal-footer { padding:14px 20px; border-top:1px solid var(--border); display:flex; gap:10px; justify-content:flex-end; }
+.modal-footer { padding:12px 20px; border-top:1px solid var(--border); display:flex; gap:8px; justify-content:flex-end; }
 
 /* Form */
-.form-group { margin-bottom:16px; }
-.form-label { display:block; font-size:12px; color:var(--text2); margin-bottom:6px; }
-.form-input, .form-textarea, .form-select { width:100%; padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); color:var(--text); font-size:13px; }
-.form-input:focus, .form-textarea:focus { outline:none; border-color:var(--accent); }
-.form-textarea { font-family:'Fira Code',monospace; resize:vertical; min-height:300px; }
-.form-row { display:flex; gap:12px; }
-.form-row > * { flex:1; }
+.form-group { margin-bottom:14px; }
+.form-label { display:block; font-size:11px; color:var(--text2); margin-bottom:5px; font-weight:500; }
+.form-input, .form-textarea, .form-select { width:100%; padding:8px 12px; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; }
+.form-input:focus, .form-textarea:focus, .form-select:focus { outline:none; border-color:var(--accent); }
+.form-textarea { font-family:'JetBrains Mono','Fira Code','Consolas',monospace; resize:vertical; min-height:280px; line-height:1.5; }
+.form-row { display:flex; gap:12px; } .form-row > * { flex:1; }
+
+/* Code editor */
+.code-editor { background:#0a0d12; border:1px solid var(--border); border-radius:var(--radius-sm); font-family:'JetBrains Mono','Fira Code','Consolas',monospace; font-size:12px; line-height:1.6; color:#a5b3cc; }
+.code-editor textarea { width:100%; min-height:300px; background:transparent; border:none; color:inherit; font:inherit; padding:12px; resize:vertical; outline:none; }
 
 /* Validation */
-.validation-result { padding:10px 14px; border-radius:var(--radius); margin-top:8px; font-size:12px; }
-.validation-ok { background:rgba(55,178,77,.1); border:1px solid var(--green); color:var(--green); }
-.validation-err { background:rgba(224,49,49,.1); border:1px solid var(--red); color:var(--red); }
-.validation-warn { background:rgba(245,159,0,.1); border:1px solid var(--orange); color:var(--orange); }
-.validation-errors { margin-top:6px; }
-.validation-errors li { margin-left:16px; }
+.val-result { padding:8px 12px; border-radius:var(--radius-sm); margin-top:6px; font-size:11px; }
+.val-ok { background:var(--green-dim); border:1px solid var(--green); color:var(--green); }
+.val-err { background:var(--red-dim); border:1px solid var(--red); color:var(--red); }
+.val-warn { background:var(--orange-dim); border:1px solid var(--orange); color:var(--orange); }
 
 /* Empty state */
-.empty { text-align:center; padding:60px 20px; color:var(--text2); }
-.empty-icon { font-size:48px; margin-bottom:12px; }
+.empty { text-align:center; padding:50px 20px; color:var(--text3); }
+.empty-icon { font-size:42px; margin-bottom:10px; }
 
 /* Rating */
-.stars { color:var(--orange); cursor:pointer; font-size:16px; }
-.stars span { opacity:.3; }
-.stars span.active { opacity:1; }
+.stars { color:var(--orange); font-size:15px; letter-spacing:2px; }
+.stars span { opacity:.25; } .stars span.active { opacity:1; }
 
-/* Hidden */
-.hidden { display:none !important; }
+/* Toast */
+.toast-container { position:fixed; top:16px; right:16px; z-index:2000; display:flex; flex-direction:column; gap:8px; }
+.toast { padding:10px 18px; border-radius:var(--radius-sm); font-size:13px; box-shadow:var(--shadow); animation:slideIn .2s ease; max-width:380px; }
+.toast-success { background:var(--green); color:#fff; }
+.toast-error { background:var(--red); color:#fff; }
+.toast-info { background:var(--accent); color:#fff; }
+@keyframes slideIn { from{transform:translateX(100%);opacity:0;} to{transform:translateX(0);opacity:1;} }
 
-/* Pagination */
-.pagination { display:flex; align-items:center; gap:8px; justify-content:center; padding:12px; }
-.pagination button { padding:4px 10px; background:var(--surface); border:1px solid var(--border); border-radius:4px; color:var(--text); cursor:pointer; }
-.pagination button:disabled { opacity:.4; cursor:default; }
+/* Loading spinner */
+.spinner { display:inline-block; width:14px; height:14px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin .6s linear infinite; }
+@keyframes spin { to{transform:rotate(360deg);} }
+
+/* Marketplace card */
+.mp-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:10px; transition:border-color .15s; }
+.mp-card:hover { border-color:var(--accent); }
+.mp-card-title { font-size:14px; font-weight:600; margin-bottom:4px; }
+.mp-card-desc { color:var(--text2); font-size:12px; margin-bottom:8px; line-height:1.5; }
+.mp-card-stats { display:flex; gap:12px; font-size:11px; color:var(--text3); }
+
+/* NL generate box */
+.nl-box { background:var(--surface2); border:1px dashed var(--border); border-radius:var(--radius); padding:16px; margin-bottom:14px; }
+.nl-box textarea { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius-sm); color:var(--text); font-size:13px; padding:10px; width:100%; min-height:60px; resize:vertical; outline:none; }
+.nl-box textarea:focus { border-color:var(--accent); }
 </style>
 </head>
 <body>
 <div class="app">
-  <!-- Sidebar -->
   <div class="sidebar">
-    <div class="logo">Vibe Trading</div>
+    <div class="logo">⚡ Vibe Trading</div>
     <div class="nav">
-      <div class="nav-item active" data-view="strategies"><span class="nav-icon">S</span>策略管理</div>
-      <div class="nav-item" data-view="factors"><span class="nav-icon">F</span>因子管理</div>
-      <div class="nav-item" data-view="portfolios"><span class="nav-icon">P</span>因子组合</div>
-      <div class="nav-item" data-view="marketplace"><span class="nav-icon">M</span>策略市场</div>
-      <div class="nav-item" data-view="templates"><span class="nav-icon">T</span>模板库</div>
+      <div class="nav-section">工作区</div>
+      <a class="nav-item active" data-view="strategies" href="javascript:void(0)" onclick="switchView(this,'strategies')"><span class="nav-icon">📊</span>策略管理</a>
+      <a class="nav-item" data-view="factors" href="javascript:void(0)" onclick="switchView(this,'factors')"><span class="nav-icon">🔬</span>因子管理</a>
+      <a class="nav-item" data-view="portfolios" href="javascript:void(0)" onclick="switchView(this,'portfolios')"><span class="nav-icon">📦</span>因子组合</a>
+      <div class="nav-section">发现</div>
+      <a class="nav-item" data-view="marketplace" href="javascript:void(0)" onclick="switchView(this,'marketplace')"><span class="nav-icon">🏪</span>策略市场</a>
+      <a class="nav-item" data-view="templates" href="javascript:void(0)" onclick="switchView(this,'templates')"><span class="nav-icon">📐</span>模板库</a>
+      <div class="nav-section">工具</div>
+      <a class="nav-item" data-view="nl_generate" href="javascript:void(0)" onclick="switchView(this,'nl_generate')"><span class="nav-icon">🤖</span>AI 生成策略</a>
     </div>
-    <div style="padding:12px; border-top:1px solid var(--border); font-size:11px; color:var(--text2);">
-      Sprint 2 · Web Workbench
-    </div>
+    <div class="sidebar-footer">v2.0 · 策略管理工作台</div>
   </div>
 
-  <!-- Main -->
   <div class="main">
     <div class="topbar">
       <h1 id="page-title">策略管理</h1>
-      <input class="search-box" id="search-input" placeholder="搜索策略名称或描述..." oninput="onSearch()">
-      <button class="btn btn-primary" onclick="openCreateModal()">+ 新建策略</button>
-      <button class="btn btn-ghost" onclick="loadData()">刷新</button>
+      <input class="search-box" id="search-input" placeholder="搜索..." oninput="onSearch()">
+      <button class="btn btn-primary" id="create-btn" onclick="openCreateModal()">+ 新建策略</button>
+      <button class="btn btn-ghost" onclick="loadData()">↻ 刷新</button>
     </div>
-    <div class="content" id="content">
-      <!-- Dynamic content injected here -->
-    </div>
+    <div class="content" id="content"></div>
   </div>
 </div>
 
-<!-- Modal container -->
 <div id="modal-container"></div>
+<div class="toast-container" id="toast-container"></div>
 
 <script>
-// ------------------------------------------------------------------
-// State
-// ------------------------------------------------------------------
-let currentView = 'strategies';
-let allItems = [];
-let searchQuery = '';
-let editingId = null;
+// ===== State =====
+var currentView = 'strategies';
+var searchQuery = '';
+var searchTimer = null;
 
-// ------------------------------------------------------------------
-// Navigation
-// ------------------------------------------------------------------
-document.querySelectorAll('.nav-item').forEach(el => {
-  el.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-    el.classList.add('active');
-    currentView = el.dataset.view;
-    const titles = {
-      strategies: '策略管理', factors: '因子管理',
-      portfolios: '因子组合', marketplace: '策略市场', templates: '模板库'
-    };
-    document.getElementById('page-title').textContent = titles[currentView];
-    document.getElementById('search-input').placeholder = `搜索${titles[currentView]}...`;
-    const btn = document.querySelector('.btn-primary');
-    btn.textContent = currentView === 'strategies' ? '+ 新建策略' : currentView === 'factors' ? '+ 新建因子' : currentView === 'portfolios' ? '+ 新建组合' : '';
-    btn.style.display = (currentView === 'strategies' || currentView === 'factors' || currentView === 'portfolios') ? '' : 'none';
+// ===== Toast =====
+function toast(msg, type) {
+  type = type || 'info';
+  var el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(function() { el.style.opacity = '0'; el.style.transform = 'translateX(100%)'; el.style.transition = 'all .3s'; }, 3000);
+  setTimeout(function() { el.remove(); }, 3400);
+}
+
+// ===== Navigation =====
+function switchView(el, view) {
+  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+  el.classList.add('active');
+  currentView = view;
+  var titles = {
+    strategies: '策略管理', factors: '因子管理', portfolios: '因子组合',
+    marketplace: '策略市场', templates: '模板库', nl_generate: 'AI 生成策略'
+  };
+  document.getElementById('page-title').textContent = titles[currentView] || '';
+  document.getElementById('search-input').placeholder = '搜索' + (titles[currentView] || '') + '...';
+  var createBtn = document.getElementById('create-btn');
+  var showCreate = (currentView === 'strategies' || currentView === 'factors' || currentView === 'portfolios');
+  createBtn.style.display = showCreate ? '' : 'none';
+  createBtn.textContent = currentView === 'strategies' ? '+ 新建策略' : (currentView === 'factors' ? '+ 新建因子' : '+ 新建组合');
+  loadData();
+}
+
+// ===== Search =====
+function onSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(function() {
+    searchQuery = document.getElementById('search-input').value.trim();
     loadData();
-  });
-});
+  }, 300);
+}
 
-// ------------------------------------------------------------------
-// API helpers
-// ------------------------------------------------------------------
-async function api(method, path, body) {
-  const opts = { method, headers: {'Content-Type':'application/json'} };
+// ===== API helper =====
+function api(method, path, body) {
+  var opts = { method: method, headers: { 'Content-Type': 'application/json' } };
   if (body) opts.body = JSON.stringify(body);
-  const res = await fetch(path, opts);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({detail: res.statusText}));
-    throw new Error(typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail));
-  }
-  return res.json();
+  return fetch(path, opts).then(function(res) {
+    if (!res.ok) {
+      return res.json().catch(function() { return { detail: res.statusText }; }).then(function(err) {
+        throw new Error(typeof err.detail === 'string' ? err.detail : JSON.stringify(err.detail));
+      });
+    }
+    return res.json();
+  });
 }
 
-// ------------------------------------------------------------------
-// Data loading
-// ------------------------------------------------------------------
-async function loadData() {
-  const content = document.getElementById('content');
-  content.innerHTML = '<div class="empty"><div class="empty-icon">⟳</div>加载中...</div>';
-  try {
-    if (currentView === 'strategies') await loadStrategies();
-    else if (currentView === 'factors') await loadFactors();
-    else if (currentView === 'portfolios') await loadPortfolios();
-    else if (currentView === 'marketplace') await loadMarketplace();
-    else if (currentView === 'templates') await loadTemplates();
-  } catch(e) {
-    content.innerHTML = `<div class="empty"><div class="empty-icon">⚠</div>加载失败: ${e.message}</div>`;
+// ===== Data loading dispatcher =====
+function loadData() {
+  var content = document.getElementById('content');
+  content.innerHTML = '<div class="empty"><div class="empty-icon"><span class="spinner"></span></div>加载中...</div>';
+  var fn;
+  if (currentView === 'strategies') fn = loadStrategies;
+  else if (currentView === 'factors') fn = loadFactors;
+  else if (currentView === 'portfolios') fn = loadPortfolios;
+  else if (currentView === 'marketplace') fn = loadMarketplace;
+  else if (currentView === 'templates') fn = loadTemplates;
+  else if (currentView === 'nl_generate') fn = loadNLGenerate;
+  else fn = function() { content.innerHTML = '<div class="empty">未知视图</div>'; return Promise.resolve(); };
+
+  var result = fn();
+  if (result && typeof result.catch === 'function') {
+    result.catch(function(e) {
+      content.innerHTML = '<div class="empty"><div class="empty-icon">[!]</div>加载失败: ' + esc(e.message) + '</div>';
+    });
   }
 }
 
-async function loadStrategies() {
-  const params = new URLSearchParams();
+// ===== Strategies =====
+function loadStrategies() {
+  var params = new URLSearchParams();
   if (searchQuery) params.set('search', searchQuery);
   params.set('limit', '200');
-  const data = await api('GET', `/strategies?${params}`);
-  allItems = data.strategies || [];
-  renderStrategyTable(allItems);
+  return api('GET', '/strategies?' + params.toString()).then(function(data) {
+    var items = data.strategies || [];
+    var c = document.getElementById('content');
+    if (!items.length) {
+      c.innerHTML = '<div class="empty"><div class="empty-icon">📊</div>暂无策略<br><small>点击"新建策略"或用 AI 生成一个</small></div>';
+      return;
+    }
+    var html = '<div class="card"><table><thead><tr><th>名称</th><th>分类</th><th>状态</th><th>版本</th><th>标签</th><th>更新时间</th><th>操作</th></tr></thead><tbody>';
+    items.forEach(function(s) {
+      var tags = (s.tags || []).map(function(t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('');
+      var statusBadge = '<span class="badge badge-' + statusColor(s.status) + '">' + esc(s.status) + '</span>';
+      html += '<tr>' +
+        '<td><strong>' + esc(s.name) + '</strong>' + (s.name_en ? '<br><small style="color:var(--text3)">' + esc(s.name_en) + '</small>' : '') + '</td>' +
+        '<td>' + esc(s.category || 'custom') + '</td>' +
+        '<td>' + statusBadge + '</td>' +
+        '<td>v' + s.version + '</td>' +
+        '<td>' + tags + '</td>' +
+        '<td>' + fmtDate(s.updated_at) + '</td>' +
+        '<td>' +
+          '<button class="btn btn-ghost btn-sm" onclick="openEditModal(\\''+ s.id + '\\')">编辑</button> ' +
+          '<button class="btn btn-ghost btn-sm" onclick="viewVersions(\\''+ s.id + '\\')">版本</button> ' +
+          '<button class="btn btn-ghost btn-sm" onclick="publishItem(\\'/strategies/'+ s.id + '/publish\\')">发布</button> ' +
+          '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteItem(\\''+ s.id + '\\', \\'strategies\\')">删除</button>' +
+        '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    c.innerHTML = html;
+  });
 }
 
-function renderStrategyTable(items) {
-  const content = document.getElementById('content');
-  if (!items.length) {
-    content.innerHTML = '<div class="empty"><div class="empty-icon">📋</div>暂无策略，点击"新建策略"创建第一个</div>';
-    return;
-  }
-  let html = `<div class="card"><table><thead><tr>
-    <th>名称</th><th>分类</th><th>状态</th><th>版本</th><th>标签</th><th>更新时间</th><th>操作</th>
-  </tr></thead><tbody>`;
-  for (const s of items) {
-    const tags = (s.tags||[]).map(t => `<span class="tag">${t}</span>`).join('');
-    html += `<tr>
-      <td><strong>${esc(s.name)}</strong>${s.name_en ? `<br><small style="color:var(--text2)">${esc(s.name_en)}</small>`:''}</td>
-      <td>${esc(s.category||'custom')}</td>
-      <td class="status-${s.status}">${s.status}</td>
-      <td>v${s.version}</td>
-      <td>${tags}</td>
-      <td>${fmtDate(s.updated_at)}</td>
-      <td>
-        <button class="btn btn-ghost btn-sm" onclick="openEditModal('${s.id}')">编辑</button>
-        <button class="btn btn-ghost btn-sm" onclick="viewVersions('${s.id}')">版本</button>
-        <button class="btn btn-ghost btn-sm" onclick="deleteItem('${s.id}','strategies')">删除</button>
-      </td>
-    </tr>`;
-  }
-  html += '</tbody></table></div>';
-  content.innerHTML = html;
-}
-
-// ------------------------------------------------------------------
-// Factors
-// ------------------------------------------------------------------
-async function loadFactors() {
-  const params = new URLSearchParams();
+// ===== Factors =====
+function loadFactors() {
+  var params = new URLSearchParams();
   if (searchQuery) params.set('search', searchQuery);
   params.set('limit', '200');
-  const data = await api('GET', `/factors?${params}`);
-  allItems = data.factors || [];
-  const content = document.getElementById('content');
-  if (!allItems.length) {
-    content.innerHTML = '<div class="empty"><div class="empty-icon">📊</div>暂无因子</div>';
-    return;
-  }
-  let html = `<div class="card"><table><thead><tr>
-    <th>名称</th><th>分类</th><th>状态</th><th>版本</th><th>操作</th>
-  </tr></thead><tbody>`;
-  for (const f of allItems) {
-    html += `<tr>
-      <td><strong>${esc(f.name)}</strong></td>
-      <td>${esc(f.category||'custom')}</td>
-      <td class="status-${f.status}">${f.status}</td>
-      <td>v${f.version}</td>
-      <td>
-        <button class="btn btn-ghost btn-sm" onclick="openEditFactorModal('${f.id}')">编辑</button>
-        <button class="btn btn-ghost btn-sm" onclick="deleteItem('${f.id}','factors')">删除</button>
-      </td>
-    </tr>`;
-  }
-  html += '</tbody></table></div>';
-  content.innerHTML = html;
+  return api('GET', '/factors?' + params.toString()).then(function(data) {
+    var items = data.factors || [];
+    var c = document.getElementById('content');
+    if (!items.length) {
+      c.innerHTML = '<div class="empty"><div class="empty-icon">🔬</div>暂无因子<br><small>点击"新建因子"创建</small></div>';
+      return;
+    }
+    var html = '<div class="card"><table><thead><tr><th>名称</th><th>分类</th><th>状态</th><th>版本</th><th>标签</th><th>更新时间</th><th>操作</th></tr></thead><tbody>';
+    items.forEach(function(f) {
+      var tags = (f.tags || []).map(function(t) { return '<span class="tag">' + esc(t) + '</span>'; }).join('');
+      var statusBadge = '<span class="badge badge-' + statusColor(f.status) + '">' + esc(f.status) + '</span>';
+      html += '<tr>' +
+        '<td><strong>' + esc(f.name) + '</strong></td>' +
+        '<td>' + esc(f.category || 'custom') + '</td>' +
+        '<td>' + statusBadge + '</td>' +
+        '<td>v' + f.version + '</td>' +
+        '<td>' + tags + '</td>' +
+        '<td>' + fmtDate(f.updated_at) + '</td>' +
+        '<td>' +
+          '<button class="btn btn-ghost btn-sm" onclick="openEditFactorModal(\\''+ f.id + '\\')">编辑</button> ' +
+          '<button class="btn btn-ghost btn-sm" onclick="publishItem(\\'/factors/'+ f.id + '/publish\\')">发布</button> ' +
+          '<button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteItem(\\''+ f.id + '\\', \\'factors\\')">删除</button>' +
+        '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    c.innerHTML = html;
+  });
 }
 
-// ------------------------------------------------------------------
-// Portfolios
-// ------------------------------------------------------------------
-async function loadPortfolios() {
-  const data = await api('GET', '/factors/portfolios?limit=200');
-  allItems = data.portfolios || [];
-  const content = document.getElementById('content');
-  if (!allItems.length) {
-    content.innerHTML = '<div class="empty"><div class="empty-icon">📦</div>暂无因子组合</div>';
-    return;
-  }
-  let html = `<div class="card"><table><thead><tr>
-    <th>名称</th><th>描述</th><th>状态</th><th>创建时间</th><th>操作</th>
-  </tr></thead><tbody>`;
-  for (const p of allItems) {
-    html += `<tr>
-      <td><strong>${esc(p.name)}</strong></td>
-      <td>${esc(p.description||'')}</td>
-      <td class="status-${p.status}">${p.status}</td>
-      <td>${fmtDate(p.created_at)}</td>
-      <td><button class="btn btn-ghost btn-sm" onclick="deleteItem('${p.id}','factors/portfolios')">删除</button></td>
-    </tr>`;
-  }
-  html += '</tbody></table></div>';
-  content.innerHTML = html;
+// ===== Portfolios =====
+function loadPortfolios() {
+  return api('GET', '/factors/portfolios?limit=200').then(function(data) {
+    var items = data.portfolios || [];
+    var c = document.getElementById('content');
+    if (!items.length) {
+      c.innerHTML = '<div class="empty"><div class="empty-icon">📦</div>暂无因子组合</div>';
+      return;
+    }
+    var html = '<div class="card"><table><thead><tr><th>名称</th><th>描述</th><th>状态</th><th>创建时间</th><th>操作</th></tr></thead><tbody>';
+    items.forEach(function(p) {
+      html += '<tr><td><strong>' + esc(p.name) + '</strong></td><td>' + esc(p.description || '') + '</td><td>' + esc(p.status || '') + '</td><td>' + fmtDate(p.created_at) + '</td>' +
+        '<td><button class="btn btn-ghost btn-sm" style="color:var(--red)" onclick="deleteItem(\\''+ p.id + '\\', \\'factors/portfolios\\')">删除</button></td></tr>';
+    });
+    html += '</tbody></table></div>';
+    c.innerHTML = html;
+  });
 }
 
-// ------------------------------------------------------------------
-// Marketplace
-// ------------------------------------------------------------------
-async function loadMarketplace() {
-  const data = await api('GET', '/strategies?is_public=true&limit=200');
-  allItems = data.strategies || [];
-  const content = document.getElementById('content');
-  if (!allItems.length) {
-    content.innerHTML = '<div class="empty"><div class="empty-icon">🏪</div>暂无已发布策略</div>';
-    return;
-  }
-  let html = '<div class="card"><div class="card-header">策略市场</div><div class="card-body">';
-  for (const s of allItems) {
-    const stars = renderStars(s.rating_avg, s.rating_count);
-    html += `<div style="border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-bottom:12px;">
-      <div style="display:flex; align-items:center; gap:8px;">
-        <strong style="font-size:15px;">${esc(s.name)}</strong>
-        <span class="tag">${esc(s.category||'')}</span>
-        <span style="margin-left:auto; font-size:12px; color:var(--text2);">
-          👥 ${s.subscriber_count} · 🔄 ${s.clone_count}
-        </span>
-      </div>
-      <p style="color:var(--text2); margin:6px 0; font-size:13px;">${esc(s.description||'无描述')}</p>
-      <div style="display:flex; align-items:center; gap:10px; margin-top:8px;">
-        ${stars}
-        <button class="btn btn-primary btn-sm" onclick="cloneStrategy('${s.id}')">克隆</button>
-        <button class="btn btn-ghost btn-sm" onclick="subscribeStrategy('${s.id}')">订阅</button>
-      </div>
-    </div>`;
-  }
-  html += '</div></div>';
-  content.innerHTML = html;
+// ===== Marketplace =====
+function loadMarketplace() {
+  var url = '/marketplace/strategies?limit=50&sort=popular';
+  if (searchQuery) url += '&search=' + encodeURIComponent(searchQuery);
+  return api('GET', url).then(function(data) {
+    var items = data.strategies || [];
+    var c = document.getElementById('content');
+
+    // Stats bar
+    return api('GET', '/marketplace/stats').then(function(stats) {
+      var statsHtml = '<div class="card"><div class="card-body" style="display:flex;gap:20px;">';
+      statsHtml += '<div>📈 已发布策略: <strong>' + (stats.strategies ? stats.strategies.published_count : 0) + '</strong></div>';
+      statsHtml += '<div>👥 总订阅: <strong>' + (stats.strategies ? stats.strategies.total_subscribers : 0) + '</strong></div>';
+      statsHtml += '<div>🔄 总克隆: <strong>' + (stats.strategies ? stats.strategies.total_clones : 0) + '</strong></div>';
+      statsHtml += '<div>⭐ 平均评分: <strong>' + (stats.strategies ? stats.strategies.avg_rating : 0) + '</strong></div>';
+      statsHtml += '</div></div>';
+
+      if (!items.length) {
+        c.innerHTML = statsHtml + '<div class="empty"><div class="empty-icon">🏪</div>暂无已发布策略</div>';
+        return;
+      }
+      var html = statsHtml;
+      items.forEach(function(s) {
+        var stars = renderStars(s.rating_avg, s.rating_count);
+        html += '<div class="mp-card">' +
+          '<div class="mp-card-title">' + esc(s.name) + ' <span class="tag">' + esc(s.category || '') + '</span></div>' +
+          '<div class="mp-card-desc">' + esc(s.description || '无描述') + '</div>' +
+          '<div class="mp-card-stats">' +
+            '<span>👥 订阅 ' + s.subscriber_count + '</span>' +
+            '<span>🔄 克隆 ' + s.clone_count + '</span>' +
+            '<span>' + stars + '</span>' +
+          '</div>' +
+          '<div style="margin-top:8px;">' +
+            '<button class="btn btn-primary btn-sm" onclick="cloneStrategy(\\''+ s.id + '\\')">克隆</button> ' +
+            '<button class="btn btn-ghost btn-sm" onclick="subscribeStrategy(\\''+ s.id + '\\')">订阅</button> ' +
+            '<button class="btn btn-ghost btn-sm" onclick="rateStrategy(\\''+ s.id + '\\')">评分</button>' +
+          '</div></div>';
+      });
+      c.innerHTML = html;
+    });
+  });
 }
 
-function renderStars(avg, count) {
-  let html = '<span class="stars">';
-  for (let i = 1; i <= 5; i++) {
-    html += `<span class="${i <= Math.round(avg) ? 'active' : ''}">★</span>`;
-  }
-  html += `</span><span style="font-size:12px;color:var(--text2)">${avg.toFixed(1)} (${count})</span>`;
-  return html;
+// ===== Templates =====
+function loadTemplates() {
+  return api('GET', '/strategies/templates').then(function(data) {
+    var items = data.strategies || [];
+    var c = document.getElementById('content');
+    if (!items.length) {
+      c.innerHTML = '<div class="empty"><div class="empty-icon">📐</div>暂无模板</div>';
+      return;
+    }
+    var html = '<div class="card"><table><thead><tr><th>ID</th><th>名称</th><th>来源</th><th>分类</th><th>市场</th><th>参数</th></tr></thead><tbody>';
+    items.forEach(function(t) {
+      var params = (t.parameters || []).map(function(p) { return p.key; }).join(', ');
+      html += '<tr><td><code>' + esc(t.id || '') + '</code></td><td>' + esc(t.name || '') + '</td><td><span class="tag">' + esc(t.source || '') + '</span></td><td>' + esc(t.category || '') + '</td><td>' + (t.markets || []).join(', ') + '</td><td style="font-size:11px;color:var(--text3)">' + esc(params) + '</td></tr>';
+    });
+    html += '</tbody></table></div>';
+    c.innerHTML = html;
+  });
 }
 
-// ------------------------------------------------------------------
-// Templates
-// ------------------------------------------------------------------
-async function loadTemplates() {
-  const data = await api('GET', '/strategies/templates');
-  allItems = data.strategies || [];
-  const content = document.getElementById('content');
-  if (!allItems.length) {
-    content.innerHTML = '<div class="empty"><div class="empty-icon">📐</div>暂无模板</div>';
-    return;
-  }
-  let html = `<div class="card"><table><thead><tr>
-    <th>ID</th><th>名称</th><th>来源</th><th>分类</th><th>市场</th><th>参数</th>
-  </tr></thead><tbody>`;
-  for (const t of allItems) {
-    const params = (t.parameters || []).map(p => p.key).join(', ');
-    html += `<tr>
-      <td><code>${esc(t.id||'')}</code></td>
-      <td>${esc(t.name||'')}</td>
-      <td><span class="tag">${esc(t.source||'')}</span></td>
-      <td>${esc(t.category||'')}</td>
-      <td>${(t.markets||[]).join(', ')}</td>
-      <td style="font-size:12px;color:var(--text2)">${params}</td>
-    </tr>`;
-  }
-  html += '</tbody></table></div>';
-  content.innerHTML = html;
+// ===== NL Generate =====
+function loadNLGenerate() {
+  var c = document.getElementById('content');
+  c.innerHTML =
+    '<div class="card">' +
+      '<div class="card-header">🤖 AI 自然语言生成策略</div>' +
+      '<div class="card-body">' +
+        '<div class="nl-box">' +
+          '<div style="margin-bottom:8px;font-size:13px;color:var(--text2);">描述你想要的策略，AI 会自动生成 SignalEngine 代码：</div>' +
+          '<textarea id="nl-desc" placeholder="例如：一个基于均线交叉的策略，当5日均线上穿20日均线时买入，下穿时卖出。参数可配置快线和慢线周期。"></textarea>' +
+          '<div style="margin-top:10px;display:flex;gap:8px;">' +
+            '<input class="form-input" id="nl-name" placeholder="策略名称（可选）" style="flex:1;">' +
+            '<button class="btn btn-primary" onclick="generateNL()">⚡ 生成策略</button>' +
+          '</div>' +
+        '</div>' +
+        '<div id="nl-result"></div>' +
+      '</div>' +
+    '</div>';
+  return Promise.resolve();
 }
 
-// ------------------------------------------------------------------
-// Create / Edit modal
-// ------------------------------------------------------------------
+function generateNL() {
+  var desc = document.getElementById('nl-desc').value.trim();
+  var name = document.getElementById('nl-name').value.trim() || 'AI Generated Strategy';
+  if (!desc) { toast('请输入策略描述', 'error'); return; }
+
+  var resultDiv = document.getElementById('nl-result');
+  resultDiv.innerHTML = '<div class="empty"><span class="spinner"></span> AI 正在生成策略代码...</div>';
+
+  api('POST', '/strategies/nl-generate', { description: desc, auto_create: true, name: name })
+    .then(function(data) {
+      var html = '<div class="card"><div class="card-header">✅ 生成成功</div><div class="card-body">';
+      if (data.strategy_id) {
+        html += '<div class="val-result val-ok">策略已保存！ID: ' + esc(data.strategy_id) + '</div>';
+      }
+      html += '<div class="form-group" style="margin-top:12px;"><label class="form-label">生成的代码：</label>';
+      html += '<div class="code-editor"><textarea readonly style="min-height:200px;">' + esc(data.source_code || '') + '</textarea></div>';
+      html += '</div></div></div>';
+      resultDiv.innerHTML = html;
+      toast('策略生成成功！', 'success');
+    })
+    .catch(function(e) {
+      resultDiv.innerHTML = '<div class="val-result val-err">生成失败: ' + esc(e.message) + '</div>';
+      toast('生成失败: ' + e.message, 'error');
+    });
+}
+
+// ===== Create / Edit Modal =====
 function openCreateModal() {
-  editingId = null;
-  if (currentView === 'strategies') {
-    showStrategyModal(null);
-  } else if (currentView === 'factors') {
-    showFactorModal(null);
-  } else if (currentView === 'portfolios') {
-    showPortfolioModal(null);
-  }
+  if (currentView === 'strategies') showStrategyModal(null);
+  else if (currentView === 'factors') showFactorModal(null);
+  else if (currentView === 'portfolios') showPortfolioModal(null);
 }
 
-async function openEditModal(id) {
-  const data = await api('GET', `/strategies/${id}?include_code=true`);
-  showStrategyModal(data.strategy);
+function openEditModal(id) {
+  api('GET', '/strategies/' + id + '?include_code=true').then(function(data) {
+    showStrategyModal(data.strategy);
+  }).catch(function(e) { toast('加载失败: ' + e.message, 'error'); });
 }
 
-async function openEditFactorModal(id) {
-  const data = await api('GET', `/factors/${id}?include_code=true`);
-  showFactorModal(data.factor);
+function openEditFactorModal(id) {
+  api('GET', '/factors/' + id + '?include_code=true').then(function(data) {
+    showFactorModal(data.factor);
+  }).catch(function(e) { toast('加载失败: ' + e.message, 'error'); });
 }
 
 function showStrategyModal(s) {
-  const isEdit = !!s;
-  const modal = `
-  <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
-    <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title">${isEdit ? '编辑策略' : '新建策略'}</span>
-        <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">名称 *</label>
-            <input class="form-input" id="f-name" value="${esc(s?.name||'')}" placeholder="如：动量突破策略">
-          </div>
-          <div class="form-group"><label class="form-label">英文名 (ID)</label>
-            <input class="form-input" id="f-name-en" value="${esc(s?.name_en||'')}" placeholder="如：momentum_breakout">
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">分类</label>
-            <select class="form-select" id="f-category">
-              ${['custom','trend','mean_reversion','momentum','breakout','composite'].map(c =>
-                `<option value="${c}" ${s?.category===c?'selected':''}>${c}</option>`).join('')}
-            </select>
-          </div>
-          <div class="form-group"><label class="form-label">状态</label>
-            <select class="form-select" id="f-status">
-              ${['draft','testing','published','archived'].map(c =>
-                `<option value="${c}" ${s?.status===c?'selected':''}>${c}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="form-group"><label class="form-label">描述</label>
-          <input class="form-input" id="f-desc" value="${esc(s?.description||'')}" placeholder="策略简介">
-        </div>
-        <div class="form-group"><label class="form-label">标签 (逗号分隔)</label>
-          <input class="form-input" id="f-tags" value="${(s?.tags||[]).join(', ')}" placeholder="如: 短线, A股">
-        </div>
-        <div class="form-group"><label class="form-label">源代码 (signal_engine.py)</label>
-          <textarea class="form-textarea" id="f-code" placeholder='class SignalEngine:\n    def generate(self, data_map):\n        ...'>${esc(s?.source_code||'')​​​​}</textarea>
-        </div>
-        <div id="validation-preview"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeModal()">取消</button>
-        <button class="btn btn-ghost" onclick="previewValidation()">验证代码</button>
-        <button class="btn btn-primary" onclick="saveStrategy(${isEdit ? `'${s.id}'` : 'null'})">保存</button>
-      </div>
-    </div>
-  </div>`;
+  var isEdit = !!s;
+  var modal = '<div class="modal-overlay" onclick="if(event.target===this)closeModal()">' +
+    '<div class="modal"><div class="modal-header"><span class="modal-title">' + (isEdit ? '编辑策略' : '新建策略') + '</span><button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button></div>' +
+    '<div class="modal-body">' +
+      '<div class="form-row"><div class="form-group"><label class="form-label">名称 *</label><input class="form-input" id="m-name" value="' + escVal(s ? s.name : '') + '" placeholder="如：动量突破策略"></div>' +
+      '<div class="form-group"><label class="form-label">英文名</label><input class="form-input" id="m-name-en" value="' + escVal(s ? s.name_en : '') + '" placeholder="如：momentum_breakout"></div></div>' +
+      '<div class="form-row"><div class="form-group"><label class="form-label">分类</label><select class="form-select" id="m-category">' +
+        ['custom','trend','mean_reversion','momentum','breakout','composite'].map(function(c) {
+          return '<option value="' + c + '"' + (s && s.category === c ? ' selected' : '') + '>' + c + '</option>';
+        }).join('') + '</select></div>' +
+      '<div class="form-group"><label class="form-label">标签 (逗号分隔)</label><input class="form-input" id="m-tags" value="' + escVal(s && s.tags ? s.tags.join(', ') : '') + '" placeholder="如：动量, 趋势"></div></div>' +
+      '<div class="form-group"><label class="form-label">描述</label><input class="form-input" id="m-desc" value="' + escVal(s ? s.description : '') + '" placeholder="策略描述"></div>' +
+      '<div class="form-group"><label class="form-label">策略代码 (SignalEngine)</label>' +
+        '<div class="code-editor"><textarea id="m-code" placeholder="class SignalEngine:\\n    def __init__(self):\\n        pass\\n    def generate(self, data_map):\\n        ...">' + escVal(s ? s.source_code : '') + '</textarea></div>' +
+      '</div>' +
+      '<div id="m-val"></div>' +
+    '</div>' +
+    '<div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">取消</button>' +
+    '<button class="btn btn-ghost" onclick="previewValidation()">验证代码</button>' +
+    '<button class="btn btn-primary" onclick="saveStrategy(' + (isEdit ? "'" + s.id + "'" : 'null') + ')">保存</button></div></div></div>';
   document.getElementById('modal-container').innerHTML = modal;
 }
 
 function showFactorModal(f) {
-  const isEdit = !!f;
-  const modal = `
-  <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
-    <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title">${isEdit ? '编辑因子' : '新建因子'}</span>
-        <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-row">
-          <div class="form-group"><label class="form-label">名称 *</label>
-            <input class="form-input" id="f-name" value="${esc(f?.name||'')}" placeholder="如：动量因子">
-          </div>
-          <div class="form-group"><label class="form-label">英文名</label>
-            <input class="form-input" id="f-name-en" value="${esc(f?.name_en||'')}" placeholder="如：momentum">
-          </div>
-        </div>
-        <div class="form-group"><label class="form-label">描述</label>
-          <input class="form-input" id="f-desc" value="${esc(f?.description||'')}">
-        </div>
-        <div class="form-group"><label class="form-label">源代码</label>
-          <textarea class="form-textarea" id="f-code" placeholder='class Factor:\n    def compute(self, panel):\n        ...'>${esc(f?.source_code||'')​​​​}</textarea>
-        </div>
-        <div id="validation-preview"></div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeModal()">取消</button>
-        <button class="btn btn-primary" onclick="saveFactor(${isEdit ? `'${f.id}'` : 'null'})">保存</button>
-      </div>
-    </div>
-  </div>`;
+  var isEdit = !!f;
+  var modal = '<div class="modal-overlay" onclick="if(event.target===this)closeModal()">' +
+    '<div class="modal"><div class="modal-header"><span class="modal-title">' + (isEdit ? '编辑因子' : '新建因子') + '</span><button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button></div>' +
+    '<div class="modal-body">' +
+      '<div class="form-row"><div class="form-group"><label class="form-label">名称 *</label><input class="form-input" id="m-name" value="' + escVal(f ? f.name : '') + '"></div>' +
+      '<div class="form-group"><label class="form-label">英文名</label><input class="form-input" id="m-name-en" value="' + escVal(f ? f.name_en : '') + '"></div></div>' +
+      '<div class="form-row"><div class="form-group"><label class="form-label">分类</label><select class="form-select" id="m-category">' +
+        ['custom','momentum','value','quality','volatility','volume'].map(function(c) {
+          return '<option value="' + c + '"' + (f && f.category === c ? ' selected' : '') + '>' + c + '</option>';
+        }).join('') + '</select></div>' +
+      '<div class="form-group"><label class="form-label">标签</label><input class="form-input" id="m-tags" value="' + escVal(f && f.tags ? f.tags.join(', ') : '') + '"></div></div>' +
+      '<div class="form-group"><label class="form-label">描述</label><input class="form-input" id="m-desc" value="' + escVal(f ? f.description : '') + '"></div>' +
+      '<div class="form-group"><label class="form-label">因子代码 (Factor)</label>' +
+        '<div class="code-editor"><textarea id="m-code" placeholder="class Factor:\\n    def compute(self, panel):\\n        ...">' + escVal(f ? f.source_code : '') + '</textarea></div>' +
+      '</div>' +
+      '<div id="m-val"></div>' +
+    '</div>' +
+    '<div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">取消</button>' +
+    '<button class="btn btn-primary" onclick="saveFactor(' + (isEdit ? "'" + f.id + "'" : 'null') + ')">保存</button></div></div></div>';
   document.getElementById('modal-container').innerHTML = modal;
 }
 
-function showPortfolioModal(p) {
-  const modal = `
-  <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
-    <div class="modal">
-      <div class="modal-header">
-        <span class="modal-title">新建因子组合</span>
-        <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <div class="form-group"><label class="form-label">名称 *</label>
-          <input class="form-input" id="f-name" placeholder="如：三因子动量组合">
-        </div>
-        <div class="form-group"><label class="form-label">描述</label>
-          <input class="form-input" id="f-desc">
-        </div>
-        <div class="form-group"><label class="form-label">配置 (JSON)</label>
-          <textarea class="form-textarea" id="f-config" style="min-height:150px;" placeholder='{"factors": ["f1","f2"], "weights": [0.5, 0.5]}'>{"factors": [], "weights": []}</textarea>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-ghost" onclick="closeModal()">取消</button>
-        <button class="btn btn-primary" onclick="savePortfolio()">保存</button>
-      </div>
-    </div>
-  </div>`;
+function showPortfolioModal() {
+  var modal = '<div class="modal-overlay" onclick="if(event.target===this)closeModal()">' +
+    '<div class="modal" style="max-width:560px;"><div class="modal-header"><span class="modal-title">新建因子组合</span><button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button></div>' +
+    '<div class="modal-body">' +
+      '<div class="form-group"><label class="form-label">名称 *</label><input class="form-input" id="m-name" placeholder="如：多因子动量组合"></div>' +
+      '<div class="form-group"><label class="form-label">描述</label><input class="form-input" id="m-desc"></div>' +
+      '<div class="form-group"><label class="form-label">配置 (JSON)</label><textarea class="form-textarea" id="m-config" style="min-height:120px;" placeholder=&quot;{&quot;factors&quot;: [], &quot;weights&quot;: {}}&quot;>{}</textarea></div>' +
+    '</div>' +
+    '<div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">取消</button>' +
+    '<button class="btn btn-primary" onclick="savePortfolio()">保存</button></div></div></div>';
   document.getElementById('modal-container').innerHTML = modal;
 }
 
@@ -553,189 +562,201 @@ function closeModal() {
   document.getElementById('modal-container').innerHTML = '';
 }
 
-async function previewValidation() {
-  const code = document.getElementById('f-code').value;
-  if (!code.trim()) return;
-  // Temporarily create to validate (will be discarded)
-  try {
-    const body = { name: 'validation_preview', source_code: code, status: 'draft' };
-    const data = await api('POST', '/strategies', body);
-    // If created successfully, delete it immediately
-    if (data.strategy?.id) {
-      await api('DELETE', `/strategies/${data.strategy.id}`);
-    }
-    const v = data.validation;
-    showValidationResult(v, true);
-  } catch(e) {
-    try {
-      const err = JSON.parse(e.message);
-      showValidationResult({valid: false, errors: err.errors || [e.message]}, false);
-    } catch {
-      showValidationResult({valid: false, errors: [e.message]}, false);
-    }
-  }
-}
-
-function showValidationResult(v, created) {
-  const el = document.getElementById('validation-preview');
-  if (v.valid) {
-    let html = `<div class="validation-result validation-ok">✓ 代码验证通过</div>`;
-    if (v.warnings?.length) {
-      html += `<div class="validation-result validation-warn">⚠ ${v.warnings.join('; ')}</div>`;
-    }
-    if (v.metadata?.parameters?.length) {
-      html += `<div class="validation-result validation-ok">参数: ${v.metadata.parameters.map(p => `${p.key}=${p.default}(${p.type})`).join(', ')}</div>`;
-    }
-    el.innerHTML = html;
-  } else {
-    el.innerHTML = `<div class="validation-result validation-err">✗ 验证失败<ul class="validation-errors">${(v.errors||[]).map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`;
-  }
-}
-
-async function saveStrategy(id) {
-  const name = document.getElementById('f-name').value.trim();
-  const code = document.getElementById('f-code').value.trim();
-  if (!name || !code) { alert('名称和源代码不能为空'); return; }
-  const body = {
-    name,
-    source_code: code,
-    name_en: document.getElementById('f-name-en').value.trim(),
-    description: document.getElementById('f-desc').value.trim(),
-    category: document.getElementById('f-category').value,
-    status: document.getElementById('f-status').value,
-    tags: document.getElementById('f-tags').value.split(',').map(t=>t.trim()).filter(Boolean),
-  };
-  try {
-    if (id) {
-      await api('PUT', `/strategies/${id}`, body);
-    } else {
-      await api('POST', '/strategies', body);
-    }
-    closeModal();
-    loadData();
-  } catch(e) { alert('保存失败: ' + e.message); }
-}
-
-async function saveFactor(id) {
-  const name = document.getElementById('f-name').value.trim();
-  const code = document.getElementById('f-code').value.trim();
-  if (!name || !code) { alert('名称和源代码不能为空'); return; }
-  const body = {
-    name,
-    source_code: code,
-    name_en: document.getElementById('f-name-en').value.trim(),
-    description: document.getElementById('f-desc').value.trim(),
-  };
-  try {
-    if (id) {
-      await api('PUT', `/factors/${id}`, body);
-    } else {
-      await api('POST', '/factors', body);
-    }
-    closeModal();
-    loadData();
-  } catch(e) { alert('保存失败: ' + e.message); }
-}
-
-async function savePortfolio() {
-  const name = document.getElementById('f-name').value.trim();
-  const configStr = document.getElementById('f-config').value.trim();
-  if (!name) { alert('名称不能为空'); return; }
-  let config;
-  try { config = JSON.parse(configStr); } catch { alert('配置 JSON 格式错误'); return; }
-  try {
-    await api('POST', '/factors/portfolios', { name, config, description: document.getElementById('f-desc').value.trim() });
-    closeModal();
-    loadData();
-  } catch(e) { alert('保存失败: ' + e.message); }
-}
-
-// ------------------------------------------------------------------
-// Actions
-// ------------------------------------------------------------------
-async function deleteItem(id, type) {
-  if (!confirm('确认删除？此操作不可撤销。')) return;
-  try {
-    await api('DELETE', `/${type}/${id}`);
-    loadData();
-  } catch(e) { alert('删除失败: ' + e.message); }
-}
-
-async function viewVersions(id) {
-  try {
-    const data = await api('GET', `/strategies/${id}/versions`);
-    const versions = data.versions || [];
-    let html = `<div class="modal-overlay" onclick="if(event.target===this)closeModal()">
-      <div class="modal">
-        <div class="modal-header"><span class="modal-title">版本历史 (${versions.length})</span>
-          <button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button></div>
-        <div class="modal-body">`;
-    if (!versions.length) {
-      html += '<div class="empty">暂无版本记录</div>';
-    } else {
-      html += '<table><thead><tr><th>版本</th><th>变更说明</th><th>时间</th><th>操作</th></tr></thead><tbody>';
-      for (const v of versions) {
-        html += `<tr>
-          <td>v${v.version}</td>
-          <td>${esc(v.changelog||'')}</td>
-          <td>${fmtDate(v.created_at)}</td>
-          <td><button class="btn btn-ghost btn-sm" onclick="rollbackVersion('${id}',${v.version})">回滚到此版本</button></td>
-        </tr>`;
+// ===== Validation preview =====
+function previewValidation() {
+  var code = document.getElementById('m-code').value;
+  if (!code.trim()) { toast('请输入代码', 'error'); return; }
+  var valDiv = document.getElementById('m-val');
+  valDiv.innerHTML = '<div class="val-result val-warn"><span class="spinner"></span> 验证中...</div>';
+  // Use the create endpoint with dry validation by creating and deleting
+  api('POST', '/strategies', { name: '__validation_preview__', source_code: code })
+    .then(function(data) {
+      var v = data.validation;
+      if (v.valid) {
+        valDiv.innerHTML = '<div class="val-result val-ok">✅ 验证通过' +
+          (v.warnings.length ? '<br>⚠️ ' + v.warnings.join('; ') : '') +
+          (v.metadata && v.metadata.parameters ? '<br>参数: ' + v.metadata.parameters.map(function(p) { return p.key + '=' + p.default; }).join(', ') : '') +
+          '</div>';
+      } else {
+        valDiv.innerHTML = '<div class="val-result val-err">❌ 验证失败<ul class="validation-errors">' +
+          v.errors.map(function(e) { return '<li>' + esc(e) + '</li>'; }).join('') + '</ul></div>';
       }
+      // Delete the temp strategy
+      if (data.strategy) api('DELETE', '/strategies/' + data.strategy.id).catch(function() {});
+    })
+    .catch(function(e) {
+      valDiv.innerHTML = '<div class="val-result val-err">❌ ' + esc(e.message) + '</div>';
+    });
+}
+
+// ===== Save =====
+function saveStrategy(id) {
+  var name = document.getElementById('m-name').value.trim();
+  var code = document.getElementById('m-code').value;
+  if (!name) { toast('请输入名称', 'error'); return; }
+  if (!code.trim()) { toast('请输入策略代码', 'error'); return; }
+
+  var tags = document.getElementById('m-tags').value.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+  var body = {
+    name: name,
+    name_en: document.getElementById('m-name-en').value.trim(),
+    description: document.getElementById('m-desc').value.trim(),
+    category: document.getElementById('m-category').value,
+    tags: tags,
+    source_code: code
+  };
+
+  if (id) {
+    api('PUT', '/strategies/' + id, body).then(function() { toast('策略已更新', 'success'); closeModal(); loadData(); })
+      .catch(function(e) { toast('更新失败: ' + e.message, 'error'); });
+  } else {
+    api('POST', '/strategies', body).then(function() { toast('策略创建成功', 'success'); closeModal(); loadData(); })
+      .catch(function(e) { toast('创建失败: ' + e.message, 'error'); });
+  }
+}
+
+function saveFactor(id) {
+  var name = document.getElementById('m-name').value.trim();
+  var code = document.getElementById('m-code').value;
+  if (!name) { toast('请输入名称', 'error'); return; }
+  if (!code.trim()) { toast('请输入因子代码', 'error'); return; }
+
+  var tags = document.getElementById('m-tags').value.split(',').map(function(t) { return t.trim(); }).filter(Boolean);
+  var body = {
+    name: name,
+    name_en: document.getElementById('m-name-en').value.trim(),
+    description: document.getElementById('m-desc').value.trim(),
+    category: document.getElementById('m-category').value,
+    tags: tags,
+    source_code: code
+  };
+
+  if (id) {
+    api('PUT', '/factors/' + id, body).then(function() { toast('因子已更新', 'success'); closeModal(); loadData(); })
+      .catch(function(e) { toast('更新失败: ' + e.message, 'error'); });
+  } else {
+    api('POST', '/factors', body).then(function() { toast('因子创建成功', 'success'); closeModal(); loadData(); })
+      .catch(function(e) { toast('创建失败: ' + e.message, 'error'); });
+  }
+}
+
+function savePortfolio() {
+  var name = document.getElementById('m-name').value.trim();
+  if (!name) { toast('请输入名称', 'error'); return; }
+  var configStr = document.getElementById('m-config').value;
+  var config;
+  try { config = JSON.parse(configStr); } catch(e) { toast('配置 JSON 格式错误', 'error'); return; }
+
+  api('POST', '/factors/portfolios', { name: name, description: document.getElementById('m-desc').value, config: config })
+    .then(function() { toast('组合创建成功', 'success'); closeModal(); loadData(); })
+    .catch(function(e) { toast('创建失败: ' + e.message, 'error'); });
+}
+
+// ===== Delete =====
+function deleteItem(id, type) {
+  if (!confirm('确认删除？此操作不可撤销。')) return;
+  api('DELETE', '/' + type + '/' + id).then(function() {
+    toast('已删除', 'success'); loadData();
+  }).catch(function(e) { toast('删除失败: ' + e.message, 'error'); });
+}
+
+// ===== Publish =====
+function publishItem(path) {
+  api('POST', path).then(function() { toast('已发布到市场', 'success'); loadData(); })
+    .catch(function(e) { toast('发布失败: ' + e.message, 'error'); });
+}
+
+// ===== Versions =====
+function viewVersions(id) {
+  api('GET', '/strategies/' + id + '/versions').then(function(data) {
+    var versions = data.versions || [];
+    var html = '<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal"><div class="modal-header"><span class="modal-title">版本历史 (' + versions.length + ')</span><button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button></div><div class="modal-body">';
+    if (!versions.length) { html += '<div class="empty">暂无版本记录</div>'; }
+    else {
+      html += '<table><thead><tr><th>版本</th><th>时间</th><th>变更说明</th><th>操作</th></tr></thead><tbody>';
+      versions.forEach(function(v) {
+        html += '<tr><td>v' + v.version + '</td><td>' + fmtDate(v.created_at) + '</td><td>' + esc(v.changelog || '') + '</td>' +
+          '<td><button class="btn btn-ghost btn-sm" onclick="rollbackVersion(\\''+ id + '\\',' + v.version + ')">回滚</button></td></tr>';
+      });
       html += '</tbody></table>';
     }
-    html += `</div><div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">关闭</button></div></div></div>`;
+    html += '</div><div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal()">关闭</button></div></div></div>';
     document.getElementById('modal-container').innerHTML = html;
-  } catch(e) { alert('加载版本失败: ' + e.message); }
+  }).catch(function(e) { toast('加载版本失败: ' + e.message, 'error'); });
 }
 
-async function rollbackVersion(id, ver) {
-  if (!confirm(`确认回滚到 v${ver}？将创建新版本。`)) return;
-  try {
-    await api('POST', `/strategies/${id}/rollback/${ver}`);
-    closeModal();
-    loadData();
-  } catch(e) { alert('回滚失败: ' + e.message); }
+function rollbackVersion(id, ver) {
+  if (!confirm('确认回滚到 v' + ver + '？将创建新版本。')) return;
+  api('POST', '/strategies/' + id + '/rollback/' + ver).then(function() {
+    toast('已回滚到 v' + ver, 'success'); closeModal(); loadData();
+  }).catch(function(e) { toast('回滚失败: ' + e.message, 'error'); });
 }
 
-async function cloneStrategy(id) {
-  try {
-    await api('POST', `/strategies/${id}/clone`, { user_id: 'web_user' });
-    alert('克隆成功！已添加到你的策略列表。');
-  } catch(e) { alert('克隆失败: ' + e.message); }
+// ===== Marketplace actions =====
+function cloneStrategy(id) {
+  api('POST', '/strategies/' + id + '/clone').then(function() { toast('克隆成功！已添加到你的策略', 'success'); })
+    .catch(function(e) { toast('克隆失败: ' + e.message, 'error'); });
 }
 
-async function subscribeStrategy(id) {
-  try {
-    await api('POST', `/strategies/${id}/subscribe`, { user_id: 'web_user' });
-    alert('订阅成功！');
-  } catch(e) { alert('订阅失败: ' + e.message); }
+function subscribeStrategy(id) {
+  api('POST', '/strategies/' + id + '/subscribe').then(function() { toast('订阅成功', 'success'); })
+    .catch(function(e) { toast('订阅失败: ' + e.message, 'error'); });
 }
 
-// ------------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------------
-function onSearch() {
-  searchQuery = document.getElementById('search-input').value.trim();
-  loadData();
+function rateStrategy(id) {
+  var html = '<div class="modal-overlay" onclick="if(event.target===this)closeModal()"><div class="modal" style="max-width:360px;"><div class="modal-header"><span class="modal-title">评分</span><button class="btn btn-ghost btn-sm" onclick="closeModal()">✕</button></div><div class="modal-body" style="text-align:center;">' +
+    '<div class="stars" id="rate-stars" style="font-size:28px;cursor:pointer;">' +
+    '<span data-v="1" onclick="setRate(1)">★</span><span data-v="2" onclick="setRate(2)">★</span><span data-v="3" onclick="setRate(3)">★</span><span data-v="4" onclick="setRate(4)">★</span><span data-v="5" onclick="setRate(5)">★</span></div>' +
+    '<div id="rate-val" style="margin-top:8px;color:var(--text2);">点击星星评分</div>' +
+    '</div><div class="modal-footer"><button class="btn btn-primary" onclick="submitRate(\\''+ id + '\\')">提交</button></div></div></div>';
+  document.getElementById('modal-container').innerHTML = html;
 }
 
+var currentRate = 0;
+function setRate(v) {
+  currentRate = v;
+  document.querySelectorAll('#rate-stars span').forEach(function(s) {
+    s.classList.toggle('active', parseInt(s.dataset.v) <= v);
+  });
+  document.getElementById('rate-val').textContent = v + ' 星';
+}
+
+function submitRate(id) {
+  if (!currentRate) { toast('请先选择评分', 'error'); return; }
+  api('POST', '/strategies/' + id + '/rate', { rating: currentRate }).then(function() {
+    toast('评分成功', 'success'); closeModal(); loadData();
+  }).catch(function(e) { toast('评分失败: ' + e.message, 'error'); });
+}
+
+// ===== Helpers =====
 function esc(s) {
   if (!s) return '';
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
-
+function escVal(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 function fmtDate(s) {
   if (!s) return '';
-  try {
-    const d = new Date(s);
-    return d.toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' });
-  } catch { return s; }
+  try { var d = new Date(s); return d.toLocaleString('zh-CN', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }); }
+  catch(e) { return s; }
+}
+function statusColor(status) {
+  var m = { draft: 'gray', published: 'green', testing: 'orange', archived: 'gray' };
+  return m[status] || 'gray';
+}
+function renderStars(avg, count) {
+  var html = '<span class="stars">';
+  for (var i = 1; i <= 5; i++) {
+    html += '<span class="' + (i <= Math.round(avg) ? 'active' : '') + '">★</span>';
+  }
+  html += '</span> <span style="font-size:11px;color:var(--text3)">' + (avg ? avg.toFixed(1) : '0.0') + ' (' + (count || 0) + ')</span>';
+  return html;
 }
 
-// Initial load
+// ===== Init =====
 loadData();
 </script>
 </body>
-</html>
-"""
+</html>"""

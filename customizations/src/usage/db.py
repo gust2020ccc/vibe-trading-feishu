@@ -16,13 +16,15 @@ _initialized = False
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
-    user_id      TEXT PRIMARY KEY,
-    name         TEXT DEFAULT '',
-    channel      TEXT DEFAULT 'feishu',
-    role         TEXT DEFAULT 'user',
-    status       TEXT DEFAULT 'active',
-    created_at   TEXT NOT NULL,
-    updated_at   TEXT NOT NULL
+    user_id        TEXT PRIMARY KEY,
+    name           TEXT DEFAULT '',
+    email          TEXT DEFAULT '',
+    password_hash  TEXT DEFAULT '',
+    channel        TEXT DEFAULT 'feishu',
+    role           TEXT DEFAULT 'user',
+    status         TEXT DEFAULT 'active',
+    created_at     TEXT NOT NULL,
+    updated_at     TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS quotas (
@@ -103,6 +105,21 @@ def init_db() -> None:
         try:
             conn = get_connection()
             conn.executescript(_SCHEMA)
+
+            # Migration: add email and password_hash columns if missing
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()}
+            if "email" not in cols:
+                conn.execute("ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''")
+            if "password_hash" not in cols:
+                conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''")
+            # Create email index after ensuring column exists
+            try:
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email) WHERE email != ''"
+                )
+            except Exception:
+                pass
+
             conn.commit()
             conn.close()
             _initialized = True

@@ -30,16 +30,26 @@ def get_user_id_from_request(request: Request) -> str:
     """Extract user_id from request, with multiple fallback strategies.
 
     Priority:
-      1. X-User-Id header (if present and non-empty)
-      2. request.state.user_id (set by upstream auth middleware)
-      3. ?user_id= query param (dev/testing only)
-      4. 'anonymous' (fallback)
-
-    In production (Sprint 5+), the Bearer token will be resolved to a
-    user_id via the usage.UserService, and X-User-Id will be restricted
-    to admin role only.
+      1. Bearer JWT token (if valid, resolves to user_id)
+      2. X-User-Id header (if present and non-empty)
+      3. request.state.user_id (set by upstream auth middleware)
+      4. ?user_id= query param (dev/testing only)
+      5. 'anonymous' (fallback)
     """
-    # 1. Header
+    # 1. Bearer JWT token
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        token = auth[7:].strip()
+        try:
+            from src.api.auth_jwt_routes import decode_access_token
+            payload = decode_access_token(token)
+            uid = payload.get("sub", "").strip()
+            if uid:
+                return uid
+        except Exception:
+            pass  # Invalid token, fall through to other methods
+
+    # 2. Header
     header_uid = request.headers.get(_USER_ID_HEADER)
     if header_uid and header_uid.strip():
         return header_uid.strip()

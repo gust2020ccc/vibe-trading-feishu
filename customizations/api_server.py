@@ -139,6 +139,45 @@ app.middleware("http")(_reject_untrusted_loopback_host)
 app.middleware("http")(_spa_html_deep_link_fallback)
 app.middleware("http")(_apply_security_headers)
 
+# --- SPA deep-link fallback for new React frontend routes ---
+# The base _spa_html_deep_link_fallback only covers /correlation and /runs/*.
+# Our React SPA uses /strategies, /factors, /backtest, etc. which also match
+# API endpoints — intercept browser navigations (Accept: text/html) and serve
+# index.html so client-side routing takes over.
+_FE_SPA_PATHS = frozenset({
+    "/strategies", "/factors", "/backtest", "/marketplace",
+    "/ai-generate", "/admin", "/settings", "/workbench",
+    "/login", "/register",
+})
+
+def _find_frontend_dist() -> Path | None:
+    """Locate frontend/dist relative to this file in both development and
+    installed (site-packages) layouts."""
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here.parent / "frontend" / "dist",                 # customizations/ → project root
+        here.parent.parent.parent / "frontend" / "dist",   # site-packages → project root
+        here / "frontend" / "dist",                         # same dir
+    ]
+    for c in candidates:
+        if (c / "index.html").exists():
+            return c
+    return None
+
+_FE_DIST = _find_frontend_dist()
+
+@app.middleware("http")
+async def _fe_spa_route_fallback(request: Request, call_next):
+    if request.method == "GET":
+        accept = request.headers.get("accept", "")
+        if "text/html" in accept:
+            path = request.url.path.rstrip("/") or "/"
+            if path in _FE_SPA_PATHS or path == "/":
+                index = _FE_DIST / "index.html"
+                if index.exists():
+                    return FileResponse(str(index))
+    return await call_next(request)
+
 # ============================================================================
 # Lifecycle hooks
 # ============================================================================
@@ -280,6 +319,10 @@ register_alpha_routes(app)
 from src.api.auth_routes import register_auth_routes  # noqa: E402
 register_auth_routes(app)
 
+# --- Auth JWT (Login / Register / Token Management) ---
+from src.api.auth_jwt_routes import register_auth_jwt_routes  # noqa: E402
+register_auth_jwt_routes(app)
+
 # --- Admin (User Management & Quota) ---
 from src.usage.admin_routes import register_admin_routes  # noqa: E402
 register_admin_routes(app)
@@ -364,8 +407,8 @@ def serve_main(argv: list[str] | None = None) -> int:
             f"but consider using --host 127.0.0.1 for local-only access."
         )
 
-    frontend_dist = Path(__file__).resolve().parent.parent / "frontend" / "dist"
-    frontend_root = Path(__file__).resolve().parent.parent / "frontend"
+    frontend_dist = _FE_DIST or (Path(__file__).resolve().parent.parent / "frontend" / "dist")
+    frontend_root = frontend_dist.parent if frontend_dist else (Path(__file__).resolve().parent.parent / "frontend")
 
     vite_proc = None
     if args.dev and frontend_root.exists():

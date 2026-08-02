@@ -1,0 +1,44 @@
+# ============================================================
+# Vibe-Trading Feishu - Docker Compose
+# 一键启动：API 服务器 + 飞书渠道 + 前端
+# ============================================================
+
+services:
+  vibe-trading:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: vibe-trading
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      # 配置持久化（.env, agent.json, custom_strategies, SQLite 数据库）
+      - vibe-trading-config:/root/.vibe-trading
+      # 回测结果持久化
+      - vibe-trading-runs:/app/runs
+    environment:
+      - VIBE_TRADING_SEARCH_CN_FIRST=1
+      - VIBE_TRADING_SEARCH_BING_FALLBACK=1
+      - NO_PROXY=*
+      - HTTP_PROXY=
+      - HTTPS_PROXY=
+      - PORT=8000
+      # 生产环境建议设置 API 鉴权密钥
+      # - API_AUTH_KEY=your-secure-api-key
+      # LLM 和数据源密钥通过挂载的 /root/.vibe-trading/.env 注入
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  vibe-trading-config:
+  vibe-trading-runs:

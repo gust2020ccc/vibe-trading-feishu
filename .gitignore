@@ -58,6 +58,9 @@ docs/部署方案.html
 node_modules/
 web/dist/
 web/node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
 
 # ---- Docker 数据卷 ----
 docker/data/

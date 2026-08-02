@@ -310,7 +310,7 @@ $content = [System.IO.File]::ReadAllText("start.ps1", [System.Text.Encoding]::UT
 | API 层 | FastAPI |
 | 用户管理 | SQLite + 滑动窗口限流 |
 | 回测引擎 | Vibe-Trading backtest runner |
-| 部署 | Docker（规划中） |
+| 部署 | Docker + 阿里云轻量服务器 |
 
 ## 开发路线图
 
@@ -321,7 +321,7 @@ $content = [System.IO.File]::ReadAllText("start.ps1", [System.Text.Encoding]::UT
 - [x] 回测 Web 端（策略模板 + 直接执行 + 图表 + Web 界面）
 - [x] 飞书远程命令（/backtest 回测命令）
 - [x] 数据源故障排查与修复（代理清除 + 代码规范化 + 错误处理）
-- [ ] Docker 化上云部署
+- [x] Docker 化上云部署（Dockerfile + docker-compose + 阿里云部署指南）
 
 ## 致谢
 

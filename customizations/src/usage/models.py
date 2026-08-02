@@ -12,6 +12,8 @@ class User:
 
     user_id: str
     name: str = ""
+    email: str = ""
+    password_hash: str = ""
     channel: str = "feishu"
     role: str = "user"          # user / admin / operator
     status: str = "active"      # active / disabled

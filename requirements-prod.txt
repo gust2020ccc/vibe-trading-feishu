@@ -1,0 +1,26 @@
+# ============================================================
+# Vibe-Trading Feishu - 生产环境依赖
+# 用于 Docker 构建，包含核心框架 + 自定义代码额外依赖
+# ============================================================
+
+# ---- 核心框架（自带 fastapi/uvicorn/akshare/tushare/langchain 等）----
+vibe-trading-ai==0.1.12
+
+# ---- 飞书 SDK ----
+lark-oapi>=1.4.0
+
+# ---- JWT 认证（auth_jwt_routes.py）----
+PyJWT>=2.8.0
+joserfc>=1.0.0
+
+# ---- 用户管理 ORM（usage/db.py）----
+peewee>=4.0.0
+
+# ---- 邮箱验证（pydantic EmailStr）----
+email-validator>=2.0.0
+
+# ---- 环境变量管理 ----
+python-dotenv>=1.0.0
+
+# ---- 回测数值计算加速 ----
+numba>=0.60.0
