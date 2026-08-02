@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight } from 'lucide-react'
+import { Zap, Mail, Lock, Eye, EyeOff, ArrowRight, ShieldAlert } from 'lucide-react'
 import { useAuth } from '../lib/auth'
+import { authApi } from '../lib/api'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -13,8 +14,22 @@ export default function Login() {
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [needsSetup, setNeedsSetup] = useState(false)
 
   const from = (location.state as any)?.from || '/'
+
+  // Check if system needs initial admin setup
+  useEffect(() => {
+    authApi.setupStatus()
+      .then((res) => {
+        if (res.needs_setup) {
+          setNeedsSetup(true)
+        }
+      })
+      .catch(() => {
+        // Ignore — just don't show the banner
+      })
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -54,6 +69,22 @@ export default function Login() {
         <div className="bg-surface border border-border rounded-2xl p-8 shadow-xl">
           <h1 className="text-lg font-semibold text-slate-100 mb-1">登录</h1>
           <p className="text-xs text-slate-500 mb-6">输入您的邮箱和密码以继续</p>
+
+          {/* Admin setup banner */}
+          {needsSetup && (
+            <div className="mb-4 px-4 py-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs space-y-1.5">
+              <div className="flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium">系统尚未初始化</p>
+                  <p className="text-amber-400/70 mt-0.5">首位注册的用户将自动成为系统管理员。请先注册账号以完成系统初始化。</p>
+                  <Link to="/register" className="inline-block mt-1.5 text-amber-300 hover:text-amber-200 font-medium underline underline-offset-2">
+                    前往注册 →
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">

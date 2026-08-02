@@ -43,11 +43,12 @@ export const authApi = {
   login: (email: string, password: string) =>
     api<{ access_token: string; user: any }>('POST', '/auth/login', { email, password }),
   register: (email: string, password: string, name?: string) =>
-    api<{ access_token: string; user: any }>('POST', '/auth/register', { email, password, name: name || '' }),
+    api<{ access_token: string; user: any; is_first_admin?: boolean }>('POST', '/auth/register', { email, password, name: name || '' }),
   me: () => api<any>('GET', '/auth/me'),
   refresh: () => api<{ access_token: string; user: any }>('POST', '/auth/refresh'),
   changePassword: (oldPassword: string, newPassword: string) =>
     api('POST', '/auth/change-password', { old_password: oldPassword, new_password: newPassword }),
+  setupStatus: () => api<{ needs_setup: boolean; total_users: number }>('GET', '/auth/setup-status'),
 }
 
 // Strategy APIs

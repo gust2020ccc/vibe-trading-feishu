@@ -21,7 +21,7 @@ interface AuthState {
 
 interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, name?: string) => Promise<void>
+  register: (email: string, password: string, name?: string) => Promise<{ is_first_admin?: boolean }>
   logout: () => void
   refreshUser: () => Promise<void>
 }
@@ -90,12 +90,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const register = useCallback(async (email: string, password: string, name?: string) => {
-    const res = await api<{ access_token: string; user: AuthUser }>(
+    const res = await api<{ access_token: string; user: AuthUser; is_first_admin?: boolean }>(
       'POST', '/auth/register', { email, password, name: name || '' },
     )
     localStorage.setItem(TOKEN_KEY, res.access_token)
     localStorage.setItem(USER_KEY, JSON.stringify(res.user))
     setState({ user: res.user, token: res.access_token, loading: false, isAuthenticated: true })
+    return { is_first_admin: res.is_first_admin }
   }, [])
 
   const logout = useCallback(() => {

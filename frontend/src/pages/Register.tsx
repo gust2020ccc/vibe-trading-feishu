@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Zap, Mail, Lock, User, Eye, EyeOff, ArrowRight, Check } from 'lucide-react'
+import { Zap, Mail, Lock, User, Eye, EyeOff, ArrowRight, Check, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../lib/auth'
+import { authApi } from '../lib/api'
 
 export default function Register() {
   const navigate = useNavigate()
@@ -14,6 +15,7 @@ export default function Register() {
   const [showPw, setShowPw] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [needsSetup, setNeedsSetup] = useState(false)
 
   const pwChecks = {
     length: password.length >= 6,
@@ -22,14 +24,33 @@ export default function Register() {
 
   const canSubmit = pwChecks.length && pwChecks.match && email.includes('@')
 
+  // Check if this will be the first admin
+  useEffect(() => {
+    authApi.setupStatus()
+      .then((res) => {
+        if (res.needs_setup) {
+          setNeedsSetup(true)
+        }
+      })
+      .catch(() => {
+        // Ignore
+      })
+  }, [])
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     if (!canSubmit) return
     setLoading(true)
     try {
-      await register(email, password, name || undefined)
-      navigate('/', { replace: true })
+      const result = await register(email, password, name || undefined)
+      // If first admin, show a brief success state before navigating
+      if (result?.is_first_admin) {
+        // Short delay so user sees they're now admin, then navigate
+        setTimeout(() => navigate('/', { replace: true }), 100)
+      } else {
+        navigate('/', { replace: true })
+      }
     } catch (err: any) {
       setError(err.message || '注册失败，请重试')
     } finally {
@@ -61,6 +82,19 @@ export default function Register() {
         <div className="bg-surface border border-border rounded-2xl p-8 shadow-xl">
           <h1 className="text-lg font-semibold text-slate-100 mb-1">注册</h1>
           <p className="text-xs text-slate-500 mb-6">填写以下信息创建新账户</p>
+
+          {/* First admin banner */}
+          {needsSetup && (
+            <div className="mb-4 px-4 py-3 rounded-lg bg-accent/10 border border-accent/20 text-accent text-xs space-y-1">
+              <div className="flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-slate-200">系统初始化</p>
+                  <p className="text-slate-400 mt-0.5">您将成为首位注册用户，自动获得<strong className="text-accent">系统管理员</strong>权限，可管理所有用户和系统配置。</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 px-3 py-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
@@ -160,7 +194,7 @@ export default function Register() {
                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
                 <>
-                  创建账户
+                  {needsSetup ? '创建管理员账户' : '创建账户'}
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}

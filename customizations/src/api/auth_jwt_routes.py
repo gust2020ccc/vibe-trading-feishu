@@ -311,6 +311,30 @@ def register_auth_jwt_routes(app: FastAPI) -> None:
     # POST /auth/register
     # ================================================================
 
+    def _count_users_with_password() -> int:
+        """Count users that have a password set (i.e., registered via web)."""
+        from src.usage.db import get_connection
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM users WHERE password_hash != ''"
+            ).fetchone()
+            return row["cnt"] if row else 0
+        finally:
+            conn.close()
+
+    def _count_admins() -> int:
+        """Count users with admin role that have a password (web-accessible)."""
+        from src.usage.db import get_connection
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin' AND password_hash != ''"
+            ).fetchone()
+            return row["cnt"] if row else 0
+        finally:
+            conn.close()
+
     @app.post("/auth/register")
     async def register(req: RegisterRequest):
         svc = _svc()
@@ -335,6 +359,9 @@ def register_auth_jwt_routes(app: FastAPI) -> None:
         if existing:
             raise HTTPException(status_code=409, detail="Email already registered")
 
+        # First registered user (with password) auto-becomes admin if no admins exist
+        is_first_admin = (_count_users_with_password() == 0 and _count_admins() == 0)
+
         # Create user_id (use email prefix + random suffix for uniqueness)
         base = req.email.split("@")[0][:20]
         user_id = f"{base}_{secrets.token_hex(4)}"
@@ -345,6 +372,10 @@ def register_auth_jwt_routes(app: FastAPI) -> None:
 
         # Create the user
         user = svc.get_or_create_user(user_id, "web", req.name or req.email.split("@")[0])
+
+        # First registered user auto-becomes admin
+        if is_first_admin:
+            user = svc.update_user(user_id, role="admin")
 
         # Set email and password hash
         pw_hash = hash_password(req.password)
@@ -373,6 +404,24 @@ def register_auth_jwt_routes(app: FastAPI) -> None:
                 "role": user.role,
                 "status": user.status,
             },
+            "is_first_admin": is_first_admin,
+        }
+
+    # ================================================================
+    # GET /auth/setup-status
+    # ================================================================
+
+    @app.get("/auth/setup-status")
+    async def setup_status():
+        """Check if the system needs initial admin setup.
+
+        Returns:
+          - needs_setup: true if no admin exists yet
+          - total_users: total registered users count
+        """
+        return {
+            "needs_setup": _count_admins() == 0,
+            "total_users": _count_users_with_password(),
         }
 
     # ================================================================
